@@ -1,850 +1,345 @@
 <!DOCTYPE html>
-<html lang="en" class="h-full">
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Red Cube Smart Quotation Engine</title>
-  <!-- Load Tailwind CSS Play CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Load Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f5f8fc',
-              100: '#ebeff7',
-              200: '#d7e2f0',
-              300: '#b4c9e1',
-              400: '#8ca9cf',
-              500: '#1f497d', // Navy blue
-              600: '#1b3f6d',
-              700: '#163359',
-              800: '#122a49',
-              900: '#0e1f37',
-            },
-            dark: {
-              50: '#f9f9f9',
-              100: '#e5e5e5',
-              200: '#cccccc',
-              300: '#999999',
-              400: '#666666',
-              500: '#333333',
-              600: '#1e1e1e',
-              700: '#121212',
-              800: '#0a0a0a',
-              950: '#050505',
-            }
-          },
-          fontFamily: {
-            sans: ['Segoe UI', 'Inter', 'sans-serif'],
-          }
-        }
-      }
-    }
-  </script>
-  <style>
-    body {
-      background-color: #050505;
-      color: #f9f9f9;
-      font-family: 'Segoe UI', 'Inter', sans-serif;
-    }
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #0a0a0a;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #2b2b2b;
-      border-radius: 3px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #1f497d;
-    }
-    @keyframes pulse-slow {
-      0%, 100% { opacity: 0.4; }
-      50% { opacity: 0.8; }
-    }
-    .animate-pulse-slow {
-      animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Cube Smart Quotation Engine</title>
+<link rel="stylesheet" href="style.css">
 </head>
-<body class="h-full flex flex-col select-none overflow-hidden">
+<body>
 
-  <!-- Header Nav -->
-  <header class="border-b border-neutral-900 bg-neutral-950/70 backdrop-blur-md px-6 py-3 flex items-center justify-between shrink-0">
-    <div class="flex items-center space-x-3">
-      <div class="h-9 w-9 rounded-lg bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
-        <i data-lucide="layers" class="h-5.5 w-5.5 text-white"></i>
-      </div>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo"><img src="assets/red_cube_logo.png" alt="Logo" onerror="this.style.display='none'"></div>
       <div>
-        <h1 class="text-base font-bold tracking-tight text-white">RED CUBE DESKTOP</h1>
-        <p class="text-[10px] text-neutral-400 font-medium font-sans">Smart Quotation Search & Generation Engine</p>
+        <div class="brand-title" id="brand-title-text">Red Cube</div>
+        <div class="brand-subtitle">Quotation Engine</div>
       </div>
     </div>
-    
-    <!-- Connection Status Badge -->
-    <div class="flex items-center space-x-2 bg-neutral-900/60 border border-neutral-800 rounded-full px-3.5 py-1 text-xs">
-      <span id="db-indicator" class="h-2 w-2 rounded-full bg-neutral-500"></span>
-      <span id="db-status-text" class="font-semibold text-neutral-300">Checking database...</span>
-    </div>
-  </header>
 
-  <!-- Premium Database Analytics Grid (Top Strip) -->
-  <section class="bg-neutral-950 px-6 py-3 border-b border-neutral-900 grid grid-cols-4 gap-4 shrink-0">
-    <div class="bg-neutral-900/30 border border-neutral-800/60 rounded-lg p-2.5 flex items-center space-x-3">
-      <div class="p-2 bg-brand-500/10 rounded-md border border-brand-500/20">
-        <i data-lucide="database" class="h-4.5 w-4.5 text-brand-400"></i>
-      </div>
-      <div>
-        <div class="text-[9px] text-neutral-500 font-bold uppercase">Total Items Synced</div>
-        <div class="text-sm font-extrabold text-neutral-100 font-mono" id="stat-total-items">0</div>
-      </div>
+    <div class="sidebar-nav">
+      <button class="tab-btn active" id="tab-btn-home" onclick="switchTab('home')"><span class="icon icon-sm" data-icon="layers"></span> Home</button>
+      <button class="tab-btn" id="tab-btn-compiler" onclick="switchTab('compiler')"><span class="icon icon-sm" data-icon="sheet"></span> Compiler Workspace</button>
+      <button class="tab-btn" id="tab-btn-review" onclick="switchTab('review')"><span class="icon icon-sm" data-icon="alert"></span> Needs Review<span class="tab-count hidden" id="review-tab-count">0</span></button>
+      <button class="tab-btn" id="tab-btn-history" onclick="switchTab('history')"><span class="icon icon-sm" data-icon="history"></span> Quotation History</button>
     </div>
-    <div class="bg-neutral-900/30 border border-neutral-800/60 rounded-lg p-2.5 flex items-center space-x-3">
-      <div class="p-2 bg-emerald-500/10 rounded-md border border-emerald-500/20">
-        <i data-lucide="line-chart" class="h-4.5 w-4.5 text-emerald-400"></i>
-      </div>
-      <div>
-        <div class="text-[9px] text-neutral-500 font-bold uppercase">Average Price</div>
-        <div class="text-sm font-extrabold text-neutral-100 font-mono" id="stat-avg-price">0.00 AED</div>
-      </div>
-    </div>
-    <div class="bg-neutral-900/30 border border-neutral-800/60 rounded-lg p-2.5 flex items-center space-x-3">
-      <div class="p-2 bg-amber-500/10 rounded-md border border-amber-500/20">
-        <i data-lucide="calendar" class="h-4.5 w-4.5 text-amber-400"></i>
-      </div>
-      <div>
-        <div class="text-[9px] text-neutral-500 font-bold uppercase">Chronological Range</div>
-        <div class="text-sm font-extrabold text-neutral-100 font-mono" id="stat-year-range">2024 - 2026</div>
-      </div>
-    </div>
-    <div class="bg-neutral-900/30 border border-neutral-800/60 rounded-lg p-2.5 flex items-center space-x-3">
-      <div class="p-2 bg-indigo-500/10 rounded-md border border-indigo-500/20">
-        <i data-lucide="tag" class="h-4.5 w-4.5 text-indigo-400"></i>
-      </div>
-      <div>
-        <div class="text-[9px] text-neutral-500 font-bold uppercase">Maximum Valuation</div>
-        <div class="text-sm font-extrabold text-neutral-100 font-mono" id="stat-max-price">0.00 AED</div>
-      </div>
-    </div>
-  </section>
 
-  <!-- Body Content -->
-  <main class="flex-1 overflow-hidden grid grid-cols-12 gap-6 p-6">
-    
-    <!-- Left Section: Settings & Search (Cols 7) -->
-    <section class="col-span-7 flex flex-col space-y-5 overflow-hidden h-full">
-      
-      <!-- Panel 1: Workspace Folder Settings & Verified Status -->
-      <div class="bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 shrink-0 relative overflow-hidden">
-        <div class="absolute top-0 right-0 h-24 w-24 bg-brand-500/5 rounded-full blur-xl"></div>
-        
-        <div class="flex items-center space-x-2 mb-3">
-          <i data-lucide="settings" class="h-4 w-4 text-brand-400"></i>
-          <h2 class="text-xs font-bold text-white uppercase tracking-wider">Drive Workspace Settings</h2>
+    <div class="sidebar-footer">
+      <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme"><span class="icon" id="theme-toggle-icon" data-icon="sun"></span></button>
+    </div>
+  </nav>
+
+  <div class="app-content">
+    <header class="topbar">
+      <div class="topbar-title" id="topbar-title">Home</div>
+      <div class="header-right">
+        <div class="status-badge">
+          <span id="db-indicator" class="status-dot"></span>
+          <span id="db-status-text">Checking database...</span>
         </div>
-        
-        <div class="flex flex-col space-y-3">
-          <div class="flex items-center space-x-2">
-            <div class="relative flex-1">
-              <i data-lucide="folder" class="absolute left-3 top-2.5 h-4.5 w-4.5 text-neutral-400"></i>
-              <input 
-                type="text" 
-                id="folder-path-input" 
-                value="G:\My Drive\BOOM TREE\ALL THE QUOTATIONS" 
-                placeholder="Folder Path..." 
-                class="w-full bg-neutral-950 border border-neutral-800/80 hover:border-neutral-700/80 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-lg pl-10 pr-4 py-2 text-xs text-neutral-200 focus:outline-none transition" 
-              />
-            </div>
-            
-            <button 
-              onclick="syncFolder()" 
-              id="sync-btn"
-              class="bg-brand-500 hover:bg-brand-600 active:scale-95 disabled:opacity-50 disabled:scale-100 text-white font-semibold text-xs px-4 py-2 rounded-lg flex items-center space-x-2 transition cursor-pointer shadow-lg shadow-brand-500/10"
-            >
-              <i data-lucide="refresh-cw" id="sync-spinner" class="h-4 w-4"></i>
-              <span>Sync & Build Index</span>
-            </button>
-          </div>
+      </div>
+    </header>
 
-          <!-- Verified Status Banner -->
-          <div id="index-feedback" class="hidden text-xs rounded-lg p-3 border flex items-start space-x-2.5 bg-emerald-950/20 border-emerald-800/50 text-emerald-300">
-            <i data-lucide="check-circle-2" class="h-4.5 w-4.5 mt-0.5 flex-shrink-0 text-emerald-400"></i>
-            <span id="index-feedback-msg" class="font-medium"></span>
+<!-- Home -->
+<main class="main-view" id="view-home">
+  <div class="home-view">
+    <section class="home-hero">
+      <div class="home-hero-logo"><img src="assets/red_cube_logo.png" alt="Logo" onerror="this.style.display='none'"></div>
+      <h1 class="home-hero-title" id="home-greeting-title">Welcome back</h1>
+      <p class="home-hero-subtitle" id="home-greeting-subtitle">Search historical rates, compile a quote, and get it out the door in minutes.</p>
+    </section>
+
+    <section class="home-actions">
+      <div class="home-action-card" onclick="goToNewQuotation()">
+        <div class="home-action-icon"><span class="icon icon-lg" data-icon="sparkles"></span></div>
+        <div class="home-action-title">New Quotation</div>
+        <div class="home-action-desc">Search historical items and compile a fresh quote.</div>
+      </div>
+      <div class="home-action-card" onclick="goToSync()">
+        <div class="home-action-icon"><span class="icon icon-lg" data-icon="refresh"></span></div>
+        <div class="home-action-title">Sync Historical Data</div>
+        <div class="home-action-desc">Re-index your Drive folder for the latest files.</div>
+      </div>
+      <div class="home-action-card" onclick="switchTab('review')">
+        <div class="home-action-icon"><span class="icon icon-lg" data-icon="alert"></span></div>
+        <div class="home-action-title">Needs Review</div>
+        <div class="home-action-desc" id="home-review-desc">Check flagged prices and venues.</div>
+      </div>
+      <div class="home-action-card" onclick="switchTab('history')">
+        <div class="home-action-icon"><span class="icon icon-lg" data-icon="history"></span></div>
+        <div class="home-action-title">Quotation History</div>
+        <div class="home-action-desc">Browse, filter, and clone past quotes.</div>
+      </div>
+    </section>
+
+    <section class="home-columns">
+      <div class="home-panel">
+        <div class="home-panel-title">Snapshot</div>
+        <div class="home-stats-grid">
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--accent-soft);color:var(--accent-strong);"><span class="icon" data-icon="database"></span></div>
+            <div><div class="stat-label">Items Synced</div><div class="stat-value" id="stat-total-items">0</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--success-soft);color:var(--success);"><span class="icon" data-icon="chart"></span></div>
+            <div><div class="stat-label">Average Price</div><div class="stat-value" id="stat-avg-price">0.00 AED</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--warning-soft);color:var(--warning);"><span class="icon" data-icon="calendar"></span></div>
+            <div><div class="stat-label">Chronological Range</div><div class="stat-value" id="stat-year-range">2024 - 2026</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--accent-soft);color:var(--accent-strong);"><span class="icon" data-icon="tag"></span></div>
+            <div><div class="stat-label">Max Valuation</div><div class="stat-value" id="stat-max-price">0.00 AED</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--success-soft);color:var(--success);"><span class="icon" data-icon="pin"></span></div>
+            <div><div class="stat-label">Distinct Venues</div><div class="stat-value" id="stat-venues">0</div></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon" style="background:var(--warning-soft);color:var(--warning);"><span class="icon" data-icon="alert"></span></div>
+            <div><div class="stat-label">Needs Review</div><div class="stat-value" id="stat-needs-review">0</div></div>
           </div>
         </div>
       </div>
+      <div class="home-panel">
+        <div class="home-panel-title">Recent Quotations</div>
+        <div id="home-recent-list"></div>
+      </div>
+    </section>
+  </div>
+</main>
 
-      <!-- Panel 2: Smart Matcher Results -->
-      <div class="flex-1 bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 flex flex-col overflow-hidden h-full">
-        
-        <!-- Smart Matcher Header & Inflation Tuner Slider -->
-        <div class="border-b border-neutral-900 pb-3.5 mb-4 shrink-0">
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex items-center space-x-2">
-              <i data-lucide="search" class="h-4.5 w-4.5 text-brand-400"></i>
-              <h2 class="text-xs font-bold text-white uppercase tracking-wider">Smart Matcher</h2>
-            </div>
-            <div class="text-[10px] text-brand-400 bg-brand-950/40 border border-brand-900/50 rounded-md px-2 py-0.5 font-bold flex items-center space-x-1">
-              <i data-lucide="sparkles" class="h-3 w-3"></i>
-              <span>Semantic Comparison Search</span>
-            </div>
+<!-- Compiler Workspace -->
+<main class="main-view hidden" id="view-compiler">
+  <div class="workspace">
+
+    <!-- Left: workspace settings (collapsible) -->
+    <div class="panel panel-left" id="panel-left">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon" data-icon="settings"></span><span>Workspace</span></div>
+        <span class="icon-btn" style="width:24px;height:24px;cursor:pointer;" onclick="togglePanel('left')"><span class="icon icon-sm" data-icon="chevronLeft"></span></span>
+      </div>
+      <div class="panel-body">
+        <label class="field-label">Drive Folder Path</label>
+        <div class="input-with-icon" style="margin-bottom:8px;">
+          <span class="icon" data-icon="folder"></span>
+          <input type="text" id="folder-path-input" class="input" value="G:\My Drive\BOOM TREE\ALL THE QUOTATIONS" placeholder="Folder path...">
+        </div>
+        <button class="btn btn-primary btn-block" id="sync-btn" onclick="syncFolder()">
+          <span class="icon icon-sm" id="sync-spinner" data-icon="refresh"></span><span>Sync &amp; Build Index</span>
+        </button>
+        <div id="index-feedback" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- Center: search + matches -->
+    <div class="panel panel-center">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon" data-icon="search"></span><span>Smart Matcher</span></div>
+        <span class="chip chip-accent"><span class="icon icon-sm" data-icon="sparkles"></span> Semantic Search</span>
+      </div>
+      <div class="panel-body" style="display:flex;flex-direction:column;height:100%;padding-bottom:0;">
+        <div class="slider-row" style="margin-bottom:12px;">
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-secondary);white-space:nowrap;">
+            <span class="icon icon-sm" data-icon="trending"></span> Annual Markup: <b id="markup-label" style="color:var(--accent-strong);">4%</b>
           </div>
-          
-          <!-- Dynamic Markup Tuner Slider -->
-          <div class="bg-neutral-950/60 border border-neutral-900 rounded-lg p-3 flex items-center justify-between space-x-4">
-            <div class="flex items-center space-x-2.5 text-xs text-neutral-400 shrink-0">
-              <i data-lucide="trending-up" class="h-4 w-4 text-brand-400"></i>
-              <span class="font-medium">Annual Compounding Markup:</span>
-              <span class="text-brand-300 font-bold font-mono" id="markup-label">4%</span>
-            </div>
-            <input 
-              type="range" 
-              id="markup-slider" 
-              min="0" 
-              max="15" 
-              value="4" 
-              oninput="changeMarkup(this.value)"
-              class="flex-1 accent-brand-500 bg-neutral-800 h-1.5 rounded-lg appearance-none cursor-pointer"
-            />
-          </div>
+          <input type="range" id="markup-slider" min="0" max="15" value="4" oninput="changeMarkup(this.value)">
         </div>
 
-        <!-- Search Bar -->
-        <form onsubmit="searchMatcher(event)" class="mb-4 flex space-x-2 shrink-0">
-          <div class="relative flex-1">
-            <i data-lucide="search" class="absolute left-3 top-2.5 h-4.5 w-4.5 text-neutral-400"></i>
-            <input 
-              type="text" 
-              id="search-input"
-              placeholder="Search items, playhouses, structures, etc..." 
-              class="w-full bg-neutral-950 border border-neutral-800/80 hover:border-neutral-700/80 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-lg pl-10 pr-4 py-2 text-xs text-neutral-200 focus:outline-none transition" 
-            />
+        <form onsubmit="searchMatcher(event)" style="display:flex;gap:8px;margin-bottom:6px;">
+          <div class="input-with-icon" style="flex:1;">
+            <span class="icon" data-icon="search"></span>
+            <input type="text" id="search-input" class="input" placeholder="Search items, structures, backdrops...">
           </div>
-          <button 
-            type="submit" 
-            id="search-btn"
-            class="bg-neutral-800 hover:bg-neutral-700 active:scale-95 text-white border border-neutral-700/50 font-semibold text-xs px-5 rounded-lg flex items-center justify-center transition cursor-pointer"
-          >
-            Search
-          </button>
+          <button type="submit" class="btn btn-ghost">Search</button>
         </form>
+        <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:10px;display:flex;gap:10px;">
+          <span><kbd class="kbd-hint">/</kbd> to search</span>
+          <span><kbd class="kbd-hint">Ctrl</kbd>+<kbd class="kbd-hint">Enter</kbd> to generate</span>
+        </div>
 
-        <!-- Matches Vertically Aligned Cards Container -->
-        <div id="matches-list" class="flex-1 overflow-y-auto space-y-3.5 pr-1.5">
-          <div class="h-44 flex flex-col items-center justify-center text-neutral-500 text-xs border border-dashed border-neutral-800 rounded-xl bg-neutral-950/20 p-6 text-center">
-            <i data-lucide="search" class="h-7 w-7 mb-2 text-neutral-600"></i>
-            <p>Type a keyword above to match historical rates.</p>
-          </div>
+        <div id="matches-list" style="flex:1;overflow-y:auto;padding-bottom:14px;">
+          <div class="empty-state"><span class="icon icon-lg" data-icon="search"></span><p>Type a keyword above to match historical rates.</p></div>
         </div>
       </div>
-    </section>
+    </div>
 
-    <!-- Right Section: Panel 3: Quotation Compiler (Cols 5) -->
-    <section class="col-span-5 bg-neutral-900/40 border border-neutral-800/80 rounded-xl p-5 flex flex-col justify-between overflow-hidden h-full">
-      <div class="flex flex-col flex-1 overflow-hidden h-full">
-        
-        <div class="flex items-center justify-between mb-4 shrink-0">
-          <div class="flex items-center space-x-2">
-            <i data-lucide="file-spreadsheet" class="h-4.5 w-4.5 text-brand-400"></i>
-            <h2 class="text-xs font-bold text-white uppercase tracking-wider">Quotation Compiler</h2>
-          </div>
-          <button 
-            onclick="addCustomDraftRow()"
-            class="text-[10px] bg-neutral-800/70 border border-neutral-700/80 hover:bg-neutral-700 font-bold text-neutral-300 px-3 py-1 rounded transition"
-          >
-            + Add Custom Row
-          </button>
+    <!-- Right: quotation compiler -->
+    <div class="panel panel-right">
+      <div class="panel-header">
+        <div class="panel-title"><span class="icon" data-icon="sheet"></span><span>Quotation Compiler</span></div>
+        <button class="btn btn-ghost btn-sm" onclick="addCustomDraftRow()"><span class="icon icon-sm" data-icon="plus"></span> Add Row</button>
+      </div>
+      <div class="panel-body" style="display:flex;flex-direction:column;height:100%;padding-bottom:0;">
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+          <div><label class="field-label">Client Name</label><input type="text" id="client-name-input" class="input" value="Donut"></div>
+          <div><label class="field-label">Client Phone (optional)</label><input type="text" id="client-phone-input" class="input" placeholder="+9715..."></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <div><label class="field-label">Venue</label><input type="text" id="client-venue-input" class="input" placeholder="e.g. Kite Beach"></div>
+          <div><label class="field-label">Valid For (Days)</label><input type="number" id="validity-days-input" class="input" value="14" min="1"></div>
         </div>
 
-        <!-- Client & Meta Details -->
-        <div class="grid grid-cols-2 gap-4 mb-4 shrink-0">
-          <div>
-            <label class="block text-[9px] text-neutral-400 font-bold mb-1 uppercase tracking-wider">Client Name</label>
-            <input 
-              type="text" 
-              id="client-name-input"
-              value="Donut" 
-              class="w-full bg-neutral-950 border border-neutral-800/80 focus:border-brand-500 rounded-lg px-3 py-1.5 text-xs text-neutral-200 focus:outline-none"
-            />
+        <!-- Quick Quote Bundles: 1-click insertion of common project packages -->
+        <div class="bundles-section">
+          <div class="bundles-header" onclick="toggleBundles()">
+            <span class="bundles-title"><span class="icon icon-sm" data-icon="layers"></span> Quick Quote Bundles</span>
+            <span class="icon icon-sm" id="bundles-chevron" data-icon="chevronDown"></span>
           </div>
-          <div>
-            <label class="block text-[9px] text-neutral-400 font-bold mb-1 uppercase tracking-wider">Taxation Policy</label>
-            <input 
-              type="text" 
-              value="VAT 5% (AED)" 
-              disabled
-              class="w-full bg-neutral-950/40 border border-neutral-800/30 rounded-lg px-3 py-1.5 text-xs text-neutral-500 cursor-not-allowed"
-            />
-          </div>
+          <div id="bundles-list" class="bundles-list"></div>
         </div>
 
-        <!-- Compiler Draft Table Scrollable -->
-        <div id="draft-items-container" class="flex-1 overflow-y-auto space-y-3.5 mb-4 pr-1.5">
-          <div class="h-48 flex flex-col items-center justify-center text-neutral-500 text-[11px] border border-dashed border-neutral-800 rounded-lg p-6 bg-neutral-950/20 text-center">
-            <i data-lucide="file-spreadsheet" class="h-6 w-6 text-neutral-600 mb-1.5"></i>
-            <p>No items in draft quote.</p>
-            <p class="mt-0.5 text-neutral-600">Select items from matched cards or add custom rows.</p>
-          </div>
+        <div id="draft-items-container" style="flex:1;overflow-y:auto;margin-bottom:10px;">
+          <div class="empty-state"><span class="icon icon-lg" data-icon="sheet"></span><p>No items in draft quote.</p><p style="margin-top:4px;">Select items from matches or add a custom row.</p></div>
         </div>
       </div>
 
-      <!-- Summary & Compile Button -->
-      <div class="border-t border-neutral-800/80 pt-4 shrink-0 flex flex-col">
-        <div class="bg-neutral-950 border border-neutral-800/50 rounded-lg p-3.5 space-y-2.5 mb-4 text-xs font-mono">
-          <div class="flex justify-between text-neutral-400">
-            <span>Subtotal (Excl. VAT)</span>
-            <span id="summary-subtotal">0.00 AED</span>
-          </div>
-          <div class="flex justify-between text-neutral-400">
-            <span>VAT 5% (Calculated)</span>
-            <span id="summary-vat">0.00 AED</span>
-          </div>
-          <div class="flex justify-between text-neutral-200 font-bold border-t border-neutral-900 pt-2.5 text-sm">
-            <span>Grand Total</span>
-            <span id="summary-total" class="text-brand-300">0.00 AED</span>
+      <div style="padding:14px 15px;border-top:1px solid var(--border);flex-shrink:0;">
+        <div class="summary-box">
+          <div class="summary-line"><span>Subtotal (Excl. VAT)</span><span id="summary-subtotal">0.00 AED</span></div>
+          <div class="summary-line hidden" id="summary-discount-row"><span>Discount</span><span id="summary-discount" style="color:var(--danger);">0.00 AED</span></div>
+          <div class="summary-line"><span>VAT 5%</span><span id="summary-vat">0.00 AED</span></div>
+          <div class="summary-line total"><span>Grand Total</span><span id="summary-total">0.00 AED</span></div>
+          <div class="discount-row">
+            <select class="input" id="discount-type" onchange="setDiscountType(this.value)" style="max-width:110px;">
+              <option value="">No discount</option>
+              <option value="flat">Flat AED</option>
+              <option value="percent">Percent %</option>
+            </select>
+            <input type="number" class="input" id="discount-value-input" placeholder="0" oninput="onDiscountValueChange(this.value)">
           </div>
         </div>
 
-        <!-- Aligned & Spaced Compile Button -->
-        <div class="flex justify-center w-full">
-          <button 
-            onclick="compileQuoteExcel()"
-            id="compile-btn"
-            disabled
-            class="w-full bg-brand-500 hover:bg-brand-600 disabled:opacity-50 active:scale-[0.98] disabled:scale-100 text-white font-bold text-xs py-3 rounded-lg flex items-center justify-center space-x-2.5 transition cursor-pointer shadow-lg shadow-brand-500/20"
-          >
-            <i data-lucide="file-spreadsheet" class="h-4 w-4"></i>
-            <span>Generate & Write Excel Quote</span>
-          </button>
+        <div class="format-choice" style="margin:12px 0;">
+          <label><input type="checkbox" id="format-xlsx" checked> Excel (.xlsx)</label>
+          <label><input type="checkbox" id="format-docx"> Word (.docx)</label>
         </div>
 
-        <!-- Export Success Feedback -->
-        <div id="compile-feedback" class="hidden mt-3 text-xs rounded-lg p-3 border flex flex-col space-y-1.5">
-          <div class="flex items-start space-x-2">
-            <i id="compile-feedback-icon" class="h-4.5 w-4.5 mt-0.5 flex-shrink-0"></i>
-            <div>
-              <span id="compile-feedback-title" class="font-bold block"></span>
-              <span id="compile-feedback-msg" class="break-all"></span>
-            </div>
-          </div>
+        <button class="btn btn-primary btn-block" id="compile-btn" onclick="compileQuote()" disabled>
+          <span class="icon" data-icon="sheet"></span><span>Generate Quotation</span>
+        </button>
+        <div id="compile-feedback" class="hidden"></div>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<!-- Quotation History -->
+<main class="main-view hidden" id="view-history">
+  <div class="panel" style="height:100%;">
+    <div class="panel-header">
+      <div class="panel-title"><span class="icon" data-icon="history"></span><span>Client &amp; Quotation History</span></div>
+      <div class="input-with-icon" style="width:260px;">
+        <span class="icon" data-icon="search"></span>
+        <input type="text" id="history-search" class="input" placeholder="Filter by client or venue..." oninput="filterHistory()">
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="history-toolbar">
+        <div class="status-filter-row" id="status-filter-row">
+          <span class="status-filter-chip active" data-status="" onclick="setHistoryStatusFilter('')">All</span>
+          <span class="status-filter-chip" data-status="Sent" onclick="setHistoryStatusFilter('Sent')">Sent</span>
+          <span class="status-filter-chip" data-status="Won" onclick="setHistoryStatusFilter('Won')">Won</span>
+          <span class="status-filter-chip" data-status="Lost" onclick="setHistoryStatusFilter('Lost')">Lost</span>
         </div>
       </div>
-    </section>
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead><tr><th>Ref</th><th>Client</th><th>Venue</th><th>Date</th><th>Valid Until</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="history-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
 
-  </main>
+<!-- Needs Review -->
+<main class="main-view hidden" id="view-review">
+  <div class="panel" style="height:100%;">
+    <div class="panel-header">
+      <div class="panel-title"><span class="icon" data-icon="alert"></span><span>Needs Review</span></div>
+    </div>
+    <div style="padding:12px 15px 0;">
+      <p style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin:0 0 12px;">
+        These line items came from old files where the price or venue couldn't be read with confidence — grouped below by source file.
+        <b>Approve</b> if you correct and confirm the values; <b>Dismiss</b> if it's fine as-is or doesn't matter. Either way, it won't be flagged again.
+      </p>
+    </div>
+    <div class="panel-body" style="padding-top:0;">
+      <div id="review-queue-list"></div>
+    </div>
+  </div>
+</main>
 
-  <script>
-    let draftItems = [];
-    let activeMarkup = 0.04;
+  </div>
+</div>
 
-    function initIcons() {
-      lucide.createIcons();
-    }
+<!-- Image picker modal -->
+<div class="modal-overlay" id="image-picker-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Set Line Item Image</div>
+      <span class="icon-btn" style="cursor:pointer;" onclick="closeImagePicker()"><span class="icon icon-sm" data-icon="close"></span></span>
+    </div>
+    <div class="modal-body">
+      <div class="modal-tabs">
+        <div class="modal-tab active" id="img-tab-library" onclick="switchImagePickerTab('library')">From Library</div>
+        <div class="modal-tab" id="img-tab-search" onclick="switchImagePickerTab('search')">Web Search</div>
+        <div class="modal-tab" id="img-tab-url" onclick="switchImagePickerTab('url')">Paste URL</div>
+        <div class="modal-tab" id="img-tab-upload" onclick="switchImagePickerTab('upload')">Upload</div>
+      </div>
 
-    window.addEventListener('pywebviewready', function() {
-      console.log("Desktop PyWebView connection verified.");
-      checkDbStatus();
-      updateAnalyticsDashboard();
-    });
+      <div id="img-panel-library">
+        <div id="library-search-results"></div>
+      </div>
 
-    // Fallback status trigger
-    setTimeout(function() {
-      if (window.pywebview && window.pywebview.api) {
-        checkDbStatus();
-        updateAnalyticsDashboard();
-      }
-    }, 800);
+      <div id="img-panel-search" class="hidden">
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <input type="text" id="image-search-query" class="input" placeholder="Search query...">
+          <button class="btn btn-ghost" onclick="runImageSearch()"><span class="icon icon-sm" data-icon="search"></span></button>
+        </div>
+        <div id="image-search-results"></div>
+        <div class="banner banner-warning" style="margin-top:10px;">
+          <span class="icon icon-sm" data-icon="alert"></span>
+          <span>Best-effort online search, and unlikely to find your actual product if it's custom-built. Requires internet.</span>
+        </div>
+      </div>
 
-    function checkDbStatus() {
-      if (!window.pywebview || !window.pywebview.api) return;
-      window.pywebview.api.get_db_status().then(function(res) {
-        const ind = document.getElementById("db-indicator");
-        const txt = document.getElementById("db-status-text");
-        if (res.status === "ready") {
-          ind.className = "h-2 w-2 rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/50";
-          txt.innerText = `DB Connected (${res.count} items)`;
-        } else {
-          ind.className = "h-2 w-2 rounded-full bg-rose-500";
-          txt.innerText = res.message || "DB Offline";
-        }
-      });
-    }
+      <div id="img-panel-url" class="hidden">
+        <label class="field-label">Image URL</label>
+        <input type="text" id="image-url-input" class="input" placeholder="https://..." style="margin-bottom:10px;">
+        <button class="btn btn-primary btn-block" onclick="pasteImageUrl()"><span class="icon icon-sm" data-icon="link"></span> Fetch Image</button>
+      </div>
 
-    function updateAnalyticsDashboard() {
-      if (!window.pywebview || !window.pywebview.api) return;
-      window.pywebview.api.get_analytics().then(function(data) {
-        document.getElementById("stat-total-items").innerText = data.total_items;
-        document.getElementById("stat-avg-price").innerText = data.avg_price + " AED";
-        document.getElementById("stat-max-price").innerText = data.max_price + " AED";
-        document.getElementById("stat-year-range").innerText = `${data.year_min} - ${data.year_max}`;
-      });
-    }
+      <div id="img-panel-upload" class="hidden">
+        <button class="btn btn-primary btn-block" onclick="uploadImageForItem()"><span class="icon icon-sm" data-icon="upload"></span> Choose File from Computer</button>
+        <p style="font-size:10.5px;color:var(--text-muted);margin-top:10px;">Fully offline — reads a local image file directly from disk.</p>
+      </div>
+    </div>
+  </div>
+</div>
 
-    function changeMarkup(val) {
-      document.getElementById("markup-label").innerText = val + "%";
-      activeMarkup = parseFloat(val) / 100.0;
-      
-      // Auto-trigger search if text is in search field
-      const query = document.getElementById("search-input").value.trim();
-      if (query) {
-        searchMatcher();
-      }
-    }
+<!-- Success / share modal -->
+<div class="modal-overlay" id="success-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title"><span class="icon icon-sm" data-icon="check" style="color:var(--success);"></span> Quotation Generated</div>
+      <span class="icon-btn" style="cursor:pointer;" onclick="closeSuccessModal()"><span class="icon icon-sm" data-icon="close"></span></span>
+    </div>
+    <div class="modal-body" id="success-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeSuccessModal()">Close</button>
+    </div>
+  </div>
+</div>
 
-    function syncFolder() {
-      const pathInput = document.getElementById("folder-path-input");
-      const syncBtn = document.getElementById("sync-btn");
-      const spinner = document.getElementById("sync-spinner");
-      const feedback = document.getElementById("index-feedback");
-      const feedbackMsg = document.getElementById("index-feedback-msg");
-      
-      const folderPath = pathInput.value.trim();
-      if (!folderPath) return;
+<div class="toast-container" id="toast-container"></div>
 
-      syncBtn.disabled = true;
-      spinner.classList.add("animate-spin");
-      feedback.classList.add("hidden");
-
-      if (!window.pywebview || !window.pywebview.api) {
-        alert("PyWebView API binding missing. Please run with app.py.");
-        syncBtn.disabled = false;
-        spinner.classList.remove("animate-spin");
-        return;
-      }
-
-      window.pywebview.api.index_files(folderPath).then(function(res) {
-        syncBtn.disabled = false;
-        spinner.classList.remove("animate-spin");
-
-        if (res.success) {
-          feedback.classList.remove("hidden");
-          feedbackMsg.innerText = res.message; 
-          checkDbStatus();
-          updateAnalyticsDashboard();
-        } else {
-          alert("Synchronization Error: " + res.error);
-        }
-        initIcons();
-      }).catch(function(err) {
-        syncBtn.disabled = false;
-        spinner.classList.remove("animate-spin");
-        alert("Error invoking indexing engine: " + err);
-      });
-    }
-
-    function searchMatcher(event) {
-      if (event) event.preventDefault();
-      const input = document.getElementById("search-input");
-      const container = document.getElementById("matches-list");
-      const query = input.value.trim();
-      
-      if (!query) return;
-
-      if (!event) {
-        // Do not render full spinner for quick slider update to keep search smooth
-      } else {
-        container.innerHTML = `
-          <div class="h-44 flex flex-col items-center justify-center text-neutral-400 text-xs space-y-2.5">
-            <i data-lucide="refresh-cw" class="h-7 w-7 animate-spin text-brand-400"></i>
-            <p class="animate-pulse-slow">Running semantic matching comparisons...</p>
-          </div>
-        `;
-        initIcons();
-      }
-
-      if (!window.pywebview || !window.pywebview.api) {
-        container.innerHTML = `<div class="p-4 text-xs text-rose-400">API connection missing.</div>`;
-        return;
-      }
-
-      window.pywebview.api.search_items(query, activeMarkup).then(function(res) {
-        if (!res.success) {
-          container.innerHTML = `<div class="p-4 text-xs text-rose-400">${res.error}</div>`;
-          return;
-        }
-
-        const matches = res.matches || [];
-        if (matches.length === 0) {
-          container.innerHTML = `
-            <div class="h-44 flex flex-col items-center justify-center text-neutral-500 text-xs p-6 text-center">
-              <i data-lucide="search" class="h-7 w-7 text-neutral-600 mb-2"></i>
-              <p>No historical matches found in database. Try syncing first.</p>
-            </div>
-          `;
-          initIcons();
-          return;
-        }
-
-        let html = '';
-        matches.forEach(function(m) {
-          const imageHtml = m.image_base64 
-            ? `<img src="${m.image_base64}" class="w-full h-full object-contain object-center rounded" />`
-            : `<i data-lucide="image" class="h-7 w-7 text-neutral-700"></i>`;
-            
-          html += `
-            <div 
-              onclick='addMatchedItemToDraft(${JSON.stringify(m).replace(/'/g, "&apos;")})'
-              class="group bg-neutral-950/70 border border-neutral-900 hover:border-brand-500/60 rounded-xl p-4.5 cursor-pointer transition flex items-start space-x-4 relative overflow-hidden"
-            >
-              <div class="absolute inset-0 bg-brand-500/[0.01] opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              
-              <!-- Left: base64 Image column -->
-              <div class="w-20 h-20 bg-neutral-900 border border-neutral-800 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
-                ${imageHtml}
-              </div>
-
-              <!-- Right: Metadata & Content perfectly aligned -->
-              <div class="flex-1 flex flex-col justify-between min-w-0 h-full">
-                <!-- Meta tags row -->
-                <div class="flex items-center justify-between text-[10px] mb-1.5">
-                  <span class="text-brand-300 font-bold bg-brand-950/40 px-2 py-0.5 rounded border border-brand-900/40">
-                    ${m.similarity}% Match
-                  </span>
-                  <span class="text-neutral-400 font-medium">
-                    <i data-lucide="calendar" class="h-3 w-3 mr-0.5 inline-block align-middle"></i>
-                    ${m.quote_date} (${m.elapsed_years} yrs)
-                  </span>
-                </div>
-
-                <!-- Description (multi-line) -->
-                <h3 class="text-xs font-semibold text-neutral-200 group-hover:text-white line-clamp-3 mb-3 leading-relaxed break-words">
-                  ${m.description}
-                </h3>
-
-                <!-- Rates Comparison -->
-                <div class="flex items-end justify-between border-t border-neutral-900/60 pt-2.5 text-xs font-mono">
-                  <div class="flex space-x-6">
-                    <div>
-                      <div class="text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Original</div>
-                      <div class="text-neutral-400 font-semibold">
-                        ${m.original_rate.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="text-[9px] text-neutral-600">AED</span>
-                      </div>
-                    </div>
-                    <div>
-                      <div class="text-[8px] text-brand-400 font-bold uppercase tracking-wider mb-0.5">Adjusted (${Math.round(activeMarkup*100)}%)</div>
-                      <div class="text-brand-300 font-bold">
-                        ${m.adjusted_rate.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span class="text-[9px] text-brand-500">AED</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="text-[9px] text-brand-400 group-hover:text-white font-bold flex items-center space-x-1.5 transition">
-                    <span id="add-status-${m.id}">Add to draft</span>
-                    <i data-lucide="arrow-right" class="h-3.5 w-3.5 group-hover:translate-x-1 transition-transform"></i>
-                  </div>
-                </div>
-              </div>
-            </div>
-          `;
-        });
-        container.innerHTML = html;
-        initIcons();
-      }).catch(function(err) {
-        container.innerHTML = `<div class="p-4 text-xs text-rose-400">Search error: ${err}</div>`;
-      });
-    }
-
-    function addMatchedItemToDraft(item) {
-      const newItem = {
-        id: Date.now() + Math.random().toString(),
-        description: item.description,
-        unit: item.unit || "Qty",
-        qty: 1,
-        rate: item.adjusted_rate || item.original_rate,
-        image_base64: item.image_base64 || ""
-      };
-      draftItems.push(newItem);
-      renderDraft();
-
-      const btn = document.getElementById(`add-status-${item.id}`);
-      if (btn) {
-        btn.innerText = "Added!";
-        setTimeout(function() { btn.innerText = "Add to draft"; }, 1500);
-      }
-    }
-
-    function addCustomDraftRow() {
-      const newItem = {
-        id: Date.now() + Math.random().toString(),
-        description: "Custom Event Production Item",
-        unit: "Nos",
-        qty: 1,
-        rate: 100.0,
-        image_base64: ""
-      };
-      draftItems.push(newItem);
-      renderDraft();
-    }
-
-    function enhanceDescription(itemId) {
-      // Local Heuristic AI Enhancer
-      draftItems = draftItems.map(function(item) {
-        if (item.id === itemId) {
-          let desc = item.description.trim();
-          let cleanDesc = desc.replace(/- /g, '').replace(/\n/g, ' ');
-          
-          let bullets = [];
-          let title = cleanDesc;
-          
-          if (cleanDesc.toLowerCase().includes("jungle gym")) {
-            title = "Jungle Gym Commercial Outdoor Playhouse Structure";
-            bullets = [
-              "Measures: L3.0m x W3.6m x H3.2m (Customized fit)",
-              "Structure: Solid pressure-treated Scandinavian pine wood beams",
-              "Safety: Commercial-grade PE slide, rockwall, & reinforced safety swings"
-            ];
-          } else if (cleanDesc.toLowerCase().includes("tunnel")) {
-            title = "Premium Self-Standing Grass Play Tunnel";
-            bullets = [
-              "Measures: L1.8m x W1.0m x H0.6m",
-              "Structure: Natural grass texture secured over durable pine wood frame",
-              "Features: Heavy-duty weather-resistant outdoor materials"
-            ];
-          } else if (cleanDesc.toLowerCase().includes("kitchen")) {
-            title = "Deluxe Mud Kitchen Play Station";
-            bullets = [
-              "Measures: L1.5m x W0.5m x Worktop H0.55m",
-              "Features: Integrated play sinks, chalkboards, and steel hardware",
-              "Structure: Treated weather-resistant outdoor finish"
-            ];
-          } else if (cleanDesc.toLowerCase().includes("stump") || cleanDesc.toLowerCase().includes("step")) {
-            title = "Wide Stepping Stumps (Set of 6)";
-            bullets = [
-              "Measures: Cross-section 8x8cm beams in custom heights",
-              "Structure: Double-kilned treated pine wood logs",
-              "Features: Anti-slip texturing with ground-anchor stability support"
-            ];
-          } else if (cleanDesc.toLowerCase().includes("pirate")) {
-            title = "BoomTree Custom Pirate Ship Play Structure";
-            bullets = [
-              "Measures: Bespoke event specifications as matched",
-              "Structure: Premium treated timbers with nautical rigging features",
-              "Safety: Reinforced handrails and anti-splinter premium finishing"
-            ];
-          } else {
-            title = cleanDesc.charAt(0).toUpperCase() + cleanDesc.slice(1);
-            bullets = [
-              "Premium customized event play component",
-              "Manufactured from high-grade pine wood structure",
-              "Built to custom dimensions and safety standards"
-            ];
-          }
-          
-          item.description = `${title}\n\nFeatures:\n${bullets.map(b => "  - " + b).join("\n")}`;
-        }
-        return item;
-      });
-      renderDraft();
-    }
-
-    function renderDraft() {
-      const container = document.getElementById("draft-items-container");
-      const compileBtn = document.getElementById("compile-btn");
-      
-      if (draftItems.length === 0) {
-        container.innerHTML = `
-          <div class="h-48 flex flex-col items-center justify-center text-neutral-500 text-[11px] border border-dashed border-neutral-800 rounded-lg p-6 bg-neutral-950/20 text-center">
-            <i data-lucide="file-spreadsheet" class="h-6 w-6 text-neutral-600 mb-1.5"></i>
-            <p>No items in draft quote.</p>
-            <p class="mt-0.5 text-neutral-600">Select items from matched cards or add custom rows.</p>
-          </div>
-        `;
-        compileBtn.disabled = true;
-        updateTotals(0, 0, 0);
-        initIcons();
-        return;
-      }
-
-      compileBtn.disabled = false;
-      let html = '';
-      
-      draftItems.forEach(function(item, idx) {
-        html += `
-          <div class="bg-neutral-950 border border-neutral-800/80 rounded-lg p-3 flex flex-col space-y-2.5">
-            <div class="flex items-start justify-between shrink-0">
-              <span class="text-[9px] text-neutral-500 font-mono font-bold">Item #${idx+1}</span>
-              
-              <!-- Premium Enhancer and Delete Buttons -->
-              <div class="flex items-center space-x-2">
-                <button 
-                  onclick="enhanceDescription('${item.id}')" 
-                  title="AI Enhance Description"
-                  class="text-neutral-500 hover:text-brand-400 active:scale-95 transition"
-                >
-                  <i data-lucide="wand-2" class="h-4 w-4"></i>
-                </button>
-                <button 
-                  onclick="deleteDraftItem('${item.id}')" 
-                  class="text-neutral-500 hover:text-rose-400 transition"
-                >
-                  <i data-lucide="trash-2" class="h-4 w-4"></i>
-                </button>
-              </div>
-            </div>
-
-            <!-- Description -->
-            <textarea 
-              rows="3"
-              oninput="updateDraftValue('${item.id}', 'description', this.value)"
-              class="w-full bg-neutral-900 border border-neutral-800/85 focus:border-brand-500 rounded px-2.5 py-1.5 text-xs text-neutral-200 focus:outline-none resize-none leading-relaxed"
-            >${item.description}</textarea>
-
-            <!-- Variables Grid -->
-            <div class="grid grid-cols-12 gap-2 text-xs">
-              <div class="col-span-3">
-                <label class="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Unit</label>
-                <input 
-                  type="text" 
-                  value="${item.unit}"
-                  oninput="updateDraftValue('${item.id}', 'unit', this.value)"
-                  class="w-full bg-neutral-900 border border-neutral-800/80 rounded px-1.5 py-1 text-xs text-neutral-300 text-center focus:outline-none"
-                />
-              </div>
-              <div class="col-span-3">
-                <label class="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Qty</label>
-                <input 
-                  type="number" 
-                  value="${item.qty}"
-                  oninput="updateDraftValue('${item.id}', 'qty', parseFloat(this.value) || 0)"
-                  class="w-full bg-neutral-900 border border-neutral-800/80 rounded px-1.5 py-1 text-xs text-neutral-300 text-center focus:outline-none"
-                />
-              </div>
-              <div class="col-span-3">
-                <label class="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Rate (AED)</label>
-                <input 
-                  type="number" 
-                  value="${item.rate}"
-                  oninput="updateDraftValue('${item.id}', 'rate', parseFloat(this.value) || 0)"
-                  class="w-full bg-neutral-900 border border-neutral-800/80 rounded px-1.5 py-1 text-xs text-neutral-300 text-right focus:outline-none font-mono"
-                />
-              </div>
-              <div class="col-span-3 text-right">
-                <span class="block text-[8px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Subtotal</span>
-                <div class="text-xs font-semibold text-neutral-300 pt-1 font-mono">
-                  ${(item.qty * item.rate).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}
-                </div>
-              </div>
-            </div>
-          </div>
-        `;
-      });
-
-      container.innerHTML = html;
-      initIcons();
-      recalculateTotals();
-    }
-
-    function updateDraftValue(id, key, val) {
-      draftItems = draftItems.map(function(item) {
-        if (item.id === id) {
-          item[key] = val;
-        }
-        return item;
-      });
-      if (key !== 'description' && key !== 'unit') {
-        recalculateTotals();
-        renderDraftTotalsOnly();
-      }
-    }
-
-    function deleteDraftItem(id) {
-      draftItems = draftItems.filter(function(item) {
-        return item.id !== id;
-      });
-      renderDraft();
-    }
-
-    function recalculateTotals() {
-      let subtotal = 0;
-      draftItems.forEach(function(item) {
-        subtotal += (item.qty * item.rate);
-      });
-      const vat = subtotal * 0.05;
-      const total = subtotal + vat;
-      updateTotals(subtotal, vat, total);
-    }
-
-    function updateTotals(sub, vt, tot) {
-      document.getElementById("summary-subtotal").innerText = sub.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " AED";
-      document.getElementById("summary-vat").innerText = vt.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " AED";
-      document.getElementById("summary-total").innerText = tot.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + " AED";
-    }
-
-    function renderDraftTotalsOnly() {
-      let subtotal = 0;
-      draftItems.forEach(function(item) {
-        subtotal += (item.qty * item.rate);
-      });
-      const vat = subtotal * 0.05;
-      const total = subtotal + vat;
-      updateTotals(subtotal, vat, total);
-    }
-
-    function compileQuoteExcel() {
-      const clientInput = document.getElementById("client-name-input");
-      const compileBtn = document.getElementById("compile-btn");
-      const feedback = document.getElementById("compile-feedback");
-      const feedbackIcon = document.getElementById("compile-feedback-icon");
-      const feedbackTitle = document.getElementById("compile-feedback-title");
-      const feedbackMsg = document.getElementById("compile-feedback-msg");
-
-      const clientName = clientInput.value.trim() || "Donut";
-
-      if (draftItems.length === 0) return;
-
-      compileBtn.disabled = true;
-      compileBtn.innerHTML = "Compiling spreadsheet...";
-      feedback.classList.add("hidden");
-
-      if (!window.pywebview || !window.pywebview.api) {
-        alert("Backend connection missing.");
-        compileBtn.disabled = false;
-        compileBtn.innerHTML = "Generate & Write Excel Quote";
-        return;
-      }
-
-      window.pywebview.api.generate_excel(draftItems, clientName).then(function(res) {
-        compileBtn.disabled = false;
-        compileBtn.innerHTML = `
-          <i data-lucide="file-spreadsheet" class="h-4 w-4"></i>
-          <span>Generate & Write Excel Quote</span>
-        `;
-        feedback.classList.remove("hidden");
-
-        if (res.success) {
-          feedback.className = "mt-3 text-xs rounded-lg p-3 border bg-emerald-950/20 border-emerald-800/50 text-emerald-300 flex flex-col space-y-1.5";
-          feedbackIcon.setAttribute("data-lucide", "check-circle-2");
-          feedbackIcon.className = "h-4.5 w-4.5 mt-0.5 flex-shrink-0 text-emerald-400";
-          feedbackTitle.innerText = "Spreadsheet Generated!";
-          feedbackMsg.innerText = res.file_path;
-          updateAnalyticsDashboard(); // Auto-refresh analytics after compiling a new quote
-        } else {
-          feedback.className = "mt-3 text-xs rounded-lg p-3 border bg-rose-950/20 border-rose-800/50 text-rose-300 flex flex-col space-y-1.5";
-          feedbackIcon.setAttribute("data-lucide", "alert-circle");
-          feedbackIcon.className = "h-4.5 w-4.5 mt-0.5 flex-shrink-0 text-rose-400";
-          feedbackTitle.innerText = "Generation Failed";
-          feedbackMsg.innerText = res.error;
-        }
-        initIcons();
-      }).catch(function(err) {
-        compileBtn.disabled = false;
-        compileBtn.innerHTML = `
-          <i data-lucide="file-spreadsheet" class="h-4 w-4"></i>
-          <span>Generate & Write Excel Quote</span>
-        `;
-        alert("Compilation error: " + err);
-      });
-    }
-
-    initIcons();
-  </script>
+<script src="app.js"></script>
 </body>
 </html>

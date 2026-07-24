@@ -5,3 +5,8 @@ openpyxl
 pymupdf
 chromadb
 sentence-transformers
+datefinder
+Pillow
+requests
+python-docx
+pywin32

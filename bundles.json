@@ -1,0 +1,38 @@
+{
+  "bundles": [
+    {
+      "name": "Standard Staging Package",
+      "description": "Typical stage build: platform, carpet finish, steps and skirting.",
+      "icon": "layers",
+      "items": [
+        { "description": "Staging Platform with Carpet Finish (Height 30cm)", "unit": "Sqm", "qty": 24, "rate": 90 },
+        { "description": "Stage Access Steps with Anti-Slip Nosing", "unit": "Pcs", "qty": 2, "rate": 350 },
+        { "description": "Stage Skirting - Black Pleated Fabric", "unit": "Sqm", "qty": 18, "rate": 45 },
+        { "description": "Staging Installation & Dismantling Labour", "unit": "Lump Sum", "qty": 1, "rate": 1200 }
+      ]
+    },
+    {
+      "name": "Kids Outdoor Zone",
+      "description": "Play-area package: playhouse, tunnel, stepping stumps and safety matting.",
+      "icon": "sparkles",
+      "items": [
+        { "description": "Jungle Playhouse Structure - Treated Pine Wood", "unit": "Pcs", "qty": 1, "rate": 1950 },
+        { "description": "Tunnel with Peekaboo Window", "unit": "Pcs", "qty": 1, "rate": 1200 },
+        { "description": "Wide Stepping Stumps (Set of 6)", "unit": "Set", "qty": 1, "rate": 850 },
+        { "description": "Safety Play Matting - Interlocking EVA", "unit": "Sqm", "qty": 30, "rate": 65 },
+        { "description": "Site Installation & Safety Inspection", "unit": "Lump Sum", "qty": 1, "rate": 900 }
+      ]
+    },
+    {
+      "name": "Branding Wall Set",
+      "description": "Backdrop package: self-standing wall, flex branding print and logo cutout.",
+      "icon": "tag",
+      "items": [
+        { "description": "Self Standing Wooden Wall with Flex Branding", "unit": "Sqm", "qty": 20, "rate": 180 },
+        { "description": "Standing Wooden Logo 3D Cutout", "unit": "Nos", "qty": 1, "rate": 750 },
+        { "description": "Vinyl Print Application & Lamination", "unit": "Sqm", "qty": 20, "rate": 55 },
+        { "description": "Branding Installation & Removal", "unit": "Lump Sum", "qty": 1, "rate": 800 }
+      ]
+    }
+  ]
+}
