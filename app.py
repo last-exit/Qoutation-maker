@@ -5,6 +5,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import chromadb
 from sentence_transformers import SentenceTransformer
 import webview
@@ -20,6 +21,51 @@ import corrections_db
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
 COLLECTION_NAME = "quotation_items"
 PHOTO_COLLECTION_NAME = "photo_library"
+
+# Cross-fill thresholds (cosine similarity on description embeddings). Above AUTO, two items
+# are effectively the same product quoted twice, so a photo from one is safe to reuse on the
+# other. Between SUGGEST and AUTO it is a likely-but-not-certain match, still attached but
+# flagged more softly. Below SUGGEST we leave the item without a photo rather than guess.
+CROSSFILL_AUTO = 0.82
+CROSSFILL_SUGGEST = 0.70
+
+
+def crossfill_images(items, embeddings):
+    """Fills in photos for items that have none by borrowing from the most similar item that
+    does — the same product often appears with a photo in one quote and text-only in another.
+
+    Reuses the description embeddings already computed for indexing (no extra model calls).
+    Borrowed photos are tagged in image_source so the UI can label them honestly rather than
+    passing a photo from a different quote off as this exact line item's own.
+
+    Returns the number of items that received a borrowed photo.
+    """
+    emb = np.asarray(embeddings, dtype=np.float32)
+    if emb.ndim != 2 or emb.shape[0] != len(items):
+        return 0
+
+    have = [i for i, it in enumerate(items) if it.get("image_base64")]
+    need = [i for i, it in enumerate(items) if not it.get("image_base64")]
+    if not have or not need:
+        return 0
+
+    norms = np.linalg.norm(emb, axis=1, keepdims=True)
+    unit = emb / np.clip(norms, 1e-9, None)
+    have_mat = unit[have]
+
+    filled = 0
+    for i in need:
+        sims = have_mat @ unit[i]
+        best = int(np.argmax(sims))
+        score = float(sims[best])
+        if score < CROSSFILL_SUGGEST:
+            continue
+        source_item = items[have[best]]
+        items[i]["image_base64"] = source_item["image_base64"]
+        prefix = "matched" if score >= CROSSFILL_AUTO else "suggested"
+        items[i]["image_source"] = f"{prefix} from {source_item.get('file_name', 'another quote')}"
+        filled += 1
+    return filled
 
 
 class QuotationApi:
@@ -201,6 +247,10 @@ class QuotationApi:
             model = self._get_model()
             computed_embeddings = model.encode(descriptions, show_progress_bar=False)
 
+            # Borrow photos for items that have none from their nearest photographed twin,
+            # so the same product quoted text-only in one file still shows its picture.
+            crossfilled = crossfill_images(unique_items, computed_embeddings)
+
             ids, documents, embeddings, metadatas = [], [], [], []
             for idx, item in enumerate(unique_items):
                 ids.append(f"item_{idx}")
@@ -214,6 +264,7 @@ class QuotationApi:
                     'venue': str(item.get('venue', 'Venue Unspecified')),
                     'file_name': str(item['file_name']),
                     'image_base64': str(item['image_base64']),
+                    'image_source': str(item.get('image_source', '')),
                     'rate_confidence': str(item.get('rate_confidence', 'medium')),
                     'venue_confidence': str(item.get('venue_confidence', 'medium')),
                     'needs_review': bool(item.get('needs_review', False)),
@@ -222,10 +273,12 @@ class QuotationApi:
 
             self.collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
 
+            own = sum(1 for it in unique_items if it.get('image_base64') and not str(it.get('image_source', '')).startswith(('matched', 'suggested')))
             return {
                 "success": True,
                 "indexed_count": len(unique_items),
-                "message": f"Indexing complete: {len(unique_items)} unique historical items indexed."
+                "message": f"Indexing complete: {len(unique_items)} items indexed "
+                           f"({own} with their own photo, {crossfilled} matched from other quotes)."
             }
         except Exception as e:
             return {"success": False, "error": str(e)}

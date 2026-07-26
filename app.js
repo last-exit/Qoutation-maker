@@ -61,6 +61,8 @@ function api() { return (window.pywebview && window.pywebview.api) ? window.pywe
 function uid() { return Date.now() + '_' + Math.random().toString(36).slice(2); }
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 function money(n) { return (Number(n) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+// A photo borrowed from a similar item in another quote (not this exact line's own photo).
+function isBorrowedPhoto(src) { return typeof src === 'string' && (src.startsWith('matched') || src.startsWith('suggested')); }
 
 function skeletonCards(n) {
   let html = '';
@@ -391,7 +393,10 @@ function renderMatches(matches) {
   lastMatches = matches;
   let html = '';
   matches.forEach(function (m, idx) {
-    const imageHtml = m.image_base64 ? `<img src="${m.image_base64}"/>` : icon('image', 'icon-lg');
+    const borrowed = isBorrowedPhoto(m.image_source);
+    const imageHtml = m.image_base64
+      ? `<img src="${m.image_base64}"/>${borrowed ? `<span class="borrowed-badge" title="${esc(m.image_source)}">ref</span>` : ''}`
+      : icon('image', 'icon-lg');
     html += `
       <div class="match-card anim-in" style="animation-delay:${idx * 45}ms;" onclick='addMatchedItemToDraft(${JSON.stringify(m).replace(/'/g, '&apos;')})'>
         <div class="match-thumb" id="match-thumb-${m.id}">${imageHtml}</div>
@@ -424,6 +429,68 @@ function addMatchedItemToDraft(item) {
   renderDraft();
 }
 
+function addCustomDraftRow() {
+  draftItems.push({ id: uid(), description: 'Custom Event Production Item', unit: 'Pcs', qty: 1, rate: 0, image_base64: '', image_source: '' });
+  renderDraft();
+}
+
+// --- Quick Quote Bundles ----------------------------------------------------------
+// Preset packages of commonly-quoted-together line items, editable in bundles.json.
+
+let bundlesCache = [];
+
+function loadBundles() {
+  if (!api()) return;
+  api().get_bundles().then(function (res) {
+    bundlesCache = res.bundles || [];
+    renderBundles();
+  }).catch(function () { /* bundles are optional — never block the compiler */ });
+}
+
+function renderBundles() {
+  const list = document.getElementById('bundles-list');
+  if (!list) return;
+  if (bundlesCache.length === 0) { list.innerHTML = ''; return; }
+
+  list.innerHTML = bundlesCache.map(function (b, idx) {
+    const total = (b.items || []).reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.rate) || 0), 0);
+    return `
+      <button class="bundle-card" onclick="insertBundle(${idx})" title="${esc(b.description || '')}">
+        <span class="bundle-icon">${icon(b.icon || 'layers', 'icon-sm')}</span>
+        <span class="bundle-text">
+          <span class="bundle-name">${esc(b.name)}</span>
+          <span class="bundle-meta">${(b.items || []).length} items &middot; <span class="num">${money(total)}</span> AED</span>
+        </span>
+        <span class="bundle-add">${icon('plus', 'icon-sm')}</span>
+      </button>`;
+  }).join('');
+}
+
+function toggleBundles() {
+  const list = document.getElementById('bundles-list');
+  const chevron = document.getElementById('bundles-chevron');
+  const collapsed = list.classList.toggle('collapsed');
+  if (chevron) chevron.innerHTML = svgWrap(collapsed ? 'chevronRight' : 'chevronDown');
+}
+
+function insertBundle(idx) {
+  const bundle = bundlesCache[idx];
+  if (!bundle) return;
+  (bundle.items || []).forEach(function (it) {
+    draftItems.push({
+      id: uid(),
+      description: it.description,
+      unit: it.unit || 'Pcs',
+      qty: Number(it.qty) || 1,
+      rate: Number(it.rate) || 0,
+      image_base64: '',
+      image_source: '',
+    });
+  });
+  renderDraft();
+  showToast(`Added "${bundle.name}" (${(bundle.items || []).length} items) to the draft.`, 'success');
+}
+
 // ---------------------------------------------------------------------------
 // Draft compiler
 // ---------------------------------------------------------------------------
@@ -443,7 +510,9 @@ function renderDraft() {
   compileBtn.disabled = false;
   let html = '';
   draftItems.forEach(function (item, idx) {
-    const thumb = item.image_base64 ? `<img src="${item.image_base64}"/>` : icon('image', 'icon');
+    const thumb = item.image_base64
+      ? `<img src="${item.image_base64}"/>${isBorrowedPhoto(item.image_source) ? `<span class="borrowed-badge" title="${esc(item.image_source)}">ref</span>` : ''}`
+      : icon('image', 'icon');
     const unitOptionsHtml = UNIT_OPTIONS.map(u => `<option value="${u}" ${item.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     html += `
       <div class="draft-item anim-in" style="animation-delay:${idx * 40}ms;">

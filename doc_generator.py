@@ -382,7 +382,15 @@ def generate_excel_dynamic(items, meta, template_path, output_path):
 
     # Clear any pre-existing stale rows below the header from an old fixed template.
     if ws.max_row > header_row:
-        ws.delete_rows(header_row + 1, ws.max_row - header_row)
+        stale_last_row = ws.max_row
+        ws.delete_rows(header_row + 1, stale_last_row - header_row)
+        # delete_rows shifts cell VALUES up but leaves the RowDimension height entries behind,
+        # so the old template's 55pt rows would otherwise stick to whatever we write next and
+        # balloon the summary/terms/signature block onto extra pages. Drop those height entries
+        # so any row we don't explicitly size falls back to Excel's compact default.
+        for stale_row in range(header_row + 1, stale_last_row + 1):
+            if stale_row in ws.row_dimensions:
+                del ws.row_dimensions[stale_row]
 
     # Overwrite the title/subtitle unconditionally rather than trusting whatever static text
     # is baked into the template file — otherwise company.json can say the right name and the
