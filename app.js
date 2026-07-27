@@ -29,7 +29,6 @@ const ICONS = {
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
   link: '<path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
-  chevronLeft: '<path d="M15 18l-6-6 6-6"/>',
   chevronDown: '<path d="M6 9l6 6 6-6"/>',
   chevronRight: '<path d="M9 18l6-6-6-6"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
@@ -116,6 +115,13 @@ document.addEventListener('keydown', function (e) {
   if (e.key === 'Escape') {
     if (document.getElementById('image-picker-overlay').classList.contains('open')) closeImagePicker();
     else if (document.getElementById('success-modal-overlay').classList.contains('open')) closeSuccessModal();
+    else if (document.getElementById('settings-modal-overlay').classList.contains('open')) closeSettingsModal();
+    return;
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    goToNewQuotation();
     return;
   }
 
@@ -144,6 +150,7 @@ document.addEventListener('keydown', function (e) {
 initTheme();
 hydrateIcons();
 renderDraft();
+positionActiveTabPill();
 
 window.addEventListener('pywebviewready', bootBackend);
 setTimeout(function () { if (api()) bootBackend(); }, 800);
@@ -240,22 +247,46 @@ function updateThemeIcon(theme) {
 }
 
 const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', review: 'Needs Review', history: 'Quotation History' };
+// Home has its own hero; Review/History already carry a panel title. Only Compiler
+// gets the shared page-head, since it's the one view that never had a headline.
+const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
 
 function switchTab(tab) {
   document.getElementById('view-home').classList.toggle('hidden', tab !== 'home');
   document.getElementById('view-compiler').classList.toggle('hidden', tab !== 'compiler');
   document.getElementById('view-history').classList.toggle('hidden', tab !== 'history');
   document.getElementById('view-review').classList.toggle('hidden', tab !== 'review');
-  document.getElementById('tab-btn-home').classList.toggle('active', tab === 'home');
-  document.getElementById('tab-btn-compiler').classList.toggle('active', tab === 'compiler');
-  document.getElementById('tab-btn-history').classList.toggle('active', tab === 'history');
-  document.getElementById('tab-btn-review').classList.toggle('active', tab === 'review');
-  const titleEl = document.getElementById('topbar-title');
-  if (titleEl && TAB_TITLES[tab]) titleEl.innerText = TAB_TITLES[tab];
+
+  document.querySelectorAll('.seg').forEach(function (s) {
+    s.classList.toggle('active', s.getAttribute('data-tab') === tab);
+  });
+  positionActiveTabPill();
+
+  const pageHead = document.getElementById('page-head');
+  if (tab === 'compiler') {
+    pageHead.classList.remove('hidden');
+    document.getElementById('page-eyebrow').innerText = TAB_EYEBROWS[tab] || '';
+    document.getElementById('page-title').innerText = TAB_TITLES[tab];
+  } else {
+    pageHead.classList.add('hidden');
+  }
+
   if (tab === 'home') loadHomeDashboard();
   if (tab === 'history') loadHistory();
   if (tab === 'review') loadReviewQueue();
 }
+
+// Slides the dark (or cherry, on Asphalt mode) pill under whichever tab is active —
+// the sidebar's stacked nav had no equivalent motion, this is the top-nav's signature move.
+function positionActiveTabPill() {
+  const wrap = document.getElementById('segwrap');
+  const pill = document.getElementById('segpill');
+  const active = wrap && wrap.querySelector('.seg.active');
+  if (!wrap || !pill || !active) return;
+  pill.style.width = active.offsetWidth + 'px';
+  pill.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+}
+window.addEventListener('resize', positionActiveTabPill);
 
 function goToNewQuotation() {
   switchTab('compiler');
@@ -263,13 +294,12 @@ function goToNewQuotation() {
 }
 
 function goToSync() {
-  switchTab('compiler');
+  openSettingsModal();
   setTimeout(() => { const el = document.getElementById('folder-path-input'); if (el) el.focus(); }, 50);
 }
 
-function togglePanel(which) {
-  document.getElementById('panel-' + which).classList.toggle('collapsed');
-}
+function openSettingsModal() { document.getElementById('settings-modal-overlay').classList.add('open'); }
+function closeSettingsModal() { document.getElementById('settings-modal-overlay').classList.remove('open'); }
 
 // ---------------------------------------------------------------------------
 // Status / analytics

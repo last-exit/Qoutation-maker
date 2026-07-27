@@ -9,38 +9,38 @@
 <body>
 
 <div class="app-shell">
-  <!-- Sidebar -->
-  <nav class="sidebar">
-    <div class="sidebar-brand">
-      <div class="brand-logo"><img src="assets/red_cube_logo.png" alt="Logo" onerror="this.style.display='none'"></div>
-      <div>
-        <div class="brand-title" id="brand-title-text">Red Cube</div>
-        <div class="brand-subtitle">Quotation Engine</div>
+  <!-- Command bar: replaces the sidebar entirely. Brand + a sliding pill tab switcher +
+       search/status/settings/theme on the right, all in one floating glass strip. -->
+  <div class="cmdbar">
+    <div class="brandlock">
+      <div class="cube3d"><i class="f-top"></i><i class="f-side"></i><i class="f-bottom"></i></div>
+      <span class="brand-title" id="brand-title-text">Red Cube</span>
+    </div>
+
+    <div class="segwrap" id="segwrap">
+      <div class="segpill" id="segpill"></div>
+      <div class="seg active" id="tab-btn-home" data-tab="home" onclick="switchTab('home')"><span class="icon" data-icon="layers"></span> Home</div>
+      <div class="seg" id="tab-btn-compiler" data-tab="compiler" onclick="switchTab('compiler')"><span class="icon" data-icon="sheet"></span> Compiler</div>
+      <div class="seg" id="tab-btn-review" data-tab="review" onclick="switchTab('review')"><span class="icon" data-icon="alert"></span> Review<span class="tab-count hidden" id="review-tab-count">0</span></div>
+      <div class="seg" id="tab-btn-history" data-tab="history" onclick="switchTab('history')"><span class="icon" data-icon="history"></span> History</div>
+    </div>
+
+    <div class="cmd-right">
+      <div class="cmdk" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="search"></span>Search items<kbd>Ctrl K</kbd></div>
+      <div class="status-badge">
+        <span id="db-indicator" class="status-dot"></span>
+        <span id="db-status-text">Checking database...</span>
       </div>
-    </div>
-
-    <div class="sidebar-nav">
-      <button class="tab-btn active" id="tab-btn-home" onclick="switchTab('home')"><span class="icon icon-sm" data-icon="layers"></span> Home</button>
-      <button class="tab-btn" id="tab-btn-compiler" onclick="switchTab('compiler')"><span class="icon icon-sm" data-icon="sheet"></span> Compiler Workspace</button>
-      <button class="tab-btn" id="tab-btn-review" onclick="switchTab('review')"><span class="icon icon-sm" data-icon="alert"></span> Needs Review<span class="tab-count hidden" id="review-tab-count">0</span></button>
-      <button class="tab-btn" id="tab-btn-history" onclick="switchTab('history')"><span class="icon icon-sm" data-icon="history"></span> Quotation History</button>
-    </div>
-
-    <div class="sidebar-footer">
+      <button class="icon-btn" onclick="openSettingsModal()" title="Workspace settings"><span class="icon" data-icon="settings"></span></button>
       <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme"><span class="icon" id="theme-toggle-icon" data-icon="sun"></span></button>
     </div>
-  </nav>
+  </div>
 
   <div class="app-content">
-    <header class="topbar">
-      <div class="topbar-title" id="topbar-title">Home</div>
-      <div class="header-right">
-        <div class="status-badge">
-          <span id="db-indicator" class="status-dot"></span>
-          <span id="db-status-text">Checking database...</span>
-        </div>
-      </div>
-    </header>
+    <!-- Shown only for the Compiler tab, which has no headline of its own otherwise. -->
+    <div class="page-head hidden" id="page-head">
+      <div><span class="eyebrow" id="page-eyebrow">Quotation Builder</span><h2 id="page-title">Compiler Workspace</h2></div>
+    </div>
 
 <!-- Home -->
 <main class="main-view" id="view-home">
@@ -115,25 +115,6 @@
 <!-- Compiler Workspace -->
 <main class="main-view hidden" id="view-compiler">
   <div class="workspace">
-
-    <!-- Left: workspace settings (collapsible) -->
-    <div class="panel panel-left" id="panel-left">
-      <div class="panel-header">
-        <div class="panel-title"><span class="icon" data-icon="settings"></span><span>Workspace</span></div>
-        <span class="icon-btn" style="width:24px;height:24px;cursor:pointer;" onclick="togglePanel('left')"><span class="icon icon-sm" data-icon="chevronLeft"></span></span>
-      </div>
-      <div class="panel-body">
-        <label class="field-label">Drive Folder Path</label>
-        <div class="input-with-icon" style="margin-bottom:8px;">
-          <span class="icon" data-icon="folder"></span>
-          <input type="text" id="folder-path-input" class="input" value="G:\My Drive\BOOM TREE\ALL THE QUOTATIONS" placeholder="Folder path...">
-        </div>
-        <button class="btn btn-primary btn-block" id="sync-btn" onclick="syncFolder()">
-          <span class="icon icon-sm" id="sync-spinner" data-icon="refresh"></span><span>Sync &amp; Build Index</span>
-        </button>
-        <div id="index-feedback" class="hidden"></div>
-      </div>
-    </div>
 
     <!-- Center: search + matches -->
     <div class="panel panel-center">
@@ -276,6 +257,28 @@
   </div>
 </main>
 
+  </div>
+</div>
+
+<!-- Workspace settings modal: was a permanent panel eating a whole column for something
+     touched once a week. Now a dialog behind the gear icon in the command bar. -->
+<div class="modal-overlay" id="settings-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Workspace Settings</div>
+      <span class="icon-btn" onclick="closeSettingsModal()"><span class="icon icon-sm" data-icon="close"></span></span>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">Drive Folder Path</label>
+      <div class="input-with-icon" style="margin-bottom:10px;">
+        <span class="icon" data-icon="folder"></span>
+        <input type="text" id="folder-path-input" class="input" value="G:\My Drive\BOOM TREE\ALL THE QUOTATIONS" placeholder="Folder path...">
+      </div>
+      <button class="btn btn-primary btn-block" id="sync-btn" onclick="syncFolder()">
+        <span class="icon icon-sm" id="sync-spinner" data-icon="refresh"></span><span>Sync &amp; Build Index</span>
+      </button>
+      <div id="index-feedback" class="hidden"></div>
+    </div>
   </div>
 </div>
 

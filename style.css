@@ -9,6 +9,7 @@
      Every neutral is biased toward the warm ink — no pure white, no pure grey. */
   --bg-app: #efede3;        /* Paper — ground */
   --bg-panel: #f7f5ee;      /* lifted paper — cards / panels */
+  --bg-panel-glass: rgba(247, 245, 238, 0.72); /* translucent panel for the blurred command bar */
   --bg-panel-alt: #ece9de;  /* recessed paper — nested surfaces */
   --bg-input: #fbfaf4;      /* writable fields read lightest */
   --bg-hover: #e6e2d4;
@@ -54,6 +55,7 @@
 :root[data-theme="dark"] {
   --bg-app: #1b1a16;        /* Asphalt night — ground */
   --bg-panel: #302f2c;      /* Asphalt — raised surface */
+  --bg-panel-glass: rgba(48, 47, 44, 0.66);
   --bg-panel-alt: #26251f;
   --bg-input: #211f1c;
   --bg-hover: #3a3832;
@@ -173,43 +175,58 @@ select.status-select { border: none; background: transparent; font: inherit; fon
 kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; padding: 1px 5px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 9.5px; font-family: var(--font); font-weight: 700; }
 
 /* ---------- App shell: icon+label sidebar (Zoho-style) + topbar ---------- */
-.app-shell { display: flex; flex-direction: row; height: 100vh; width: 100%; overflow: hidden; }
+/* ---------- App shell: no sidebar. A floating glass command bar replaces it, with
+   navigation as a sliding pill switcher instead of a stacked nav column. Every pixel
+   of width that used to go to a 218px rail now belongs to the workspace. ---------- */
+.app-shell { display: flex; flex-direction: column; height: 100vh; width: 100%; overflow: hidden; }
 
-.sidebar {
-  width: 218px; flex-shrink: 0; background: var(--sidebar-bg); border-right: 1px solid var(--sidebar-border);
-  display: flex; flex-direction: column; height: 100%;
+.cmdbar {
+  display: flex; align-items: center; gap: 18px; padding: 11px 22px; flex-shrink: 0; position: relative; z-index: 5;
+  background: var(--bg-panel-glass, var(--bg-panel)); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 var(--border), 0 10px 24px -16px rgba(48,47,44,.25);
 }
-.sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 18px 16px; border-bottom: 1px solid var(--sidebar-border); }
-.brand-logo {
-  width: 32px; height: 32px; border-radius: 7px; flex-shrink: 0; overflow: hidden;
-  background: #fff; display: flex; align-items: center; justify-content: center;
-}
-.brand-logo img { width: 100%; height: 100%; object-fit: contain; }
-.brand-title { font-family: var(--font-display); font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; color: var(--sidebar-text-active); line-height: 1.15; }
-.brand-subtitle { font-size: 9px; color: var(--sidebar-text); font-weight: 600; letter-spacing: .03em; text-transform: uppercase; margin-top: 1px; }
+.brandlock { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.brand-title { font-family: var(--font-display); font-size: 13.5px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; color: var(--text-primary); }
 
-.sidebar-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; flex: 1; overflow-y: auto; }
-.tab-btn {
-  border: none; background: transparent; color: var(--sidebar-text); font-weight: 600;
-  font-size: 12px; padding: 9px 12px; border-radius: var(--radius-sm); cursor: pointer;
-  display: flex; align-items: center; gap: 10px; text-align: left; width: 100%; position: relative;
-  transition: background .2s var(--ease-out), color .2s var(--ease-out);
+/* A literal cube for Red Cube — three CSS faces in perspective, not a flat rounded square. */
+.cube3d { width: 22px; height: 22px; position: relative; transform-style: preserve-3d; transform: rotateX(-18deg) rotateY(28deg); flex-shrink: 0; }
+.cube3d i { position: absolute; display: block; }
+.cube3d .f-top { width: 22px; height: 22px; background: var(--accent); top: 0; left: 0; transform: translateZ(5px); }
+.cube3d .f-side { width: 5px; height: 22px; background: var(--accent-strong); top: 0; right: -5px; transform: rotateY(90deg); transform-origin: left; }
+.cube3d .f-bottom { width: 22px; height: 5px; background: var(--accent-strong); filter: brightness(.72); bottom: -5px; left: 0; transform: rotateX(-90deg); transform-origin: top; }
+
+/* Sliding pill segmented tab switcher — replaces the stacked sidebar nav entirely. */
+.segwrap { position: relative; display: flex; background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: 999px; padding: 4px; gap: 2px; }
+.segpill {
+  position: absolute; top: 4px; bottom: 4px; left: 4px; width: 120px; border-radius: 999px;
+  background: var(--sidebar-bg); box-shadow: 0 4px 12px -4px rgba(0,0,0,.3);
+  transition: transform .32s cubic-bezier(.16,1,.3,1), width .32s cubic-bezier(.16,1,.3,1); z-index: 0;
 }
-.tab-btn:hover { color: var(--sidebar-text-active); background: rgba(239,237,227,.05); }
-/* Ledger rail: the active item isn't a cherry fill — it's a quiet dark row with a single
-   cherry stamp down its left edge. The red stays rationed even in navigation. */
-.tab-btn.active { background: rgba(239,237,227,.07); color: #ffffff; font-weight: 700; }
-.tab-btn.active::before {
-  content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px;
-  background: var(--accent); border-radius: 0 2px 2px 0;
+/* On Asphalt mode the resting pill turns cherry — the switcher restates the two-theme palette. */
+:root[data-theme="dark"] .segpill { background: var(--accent); }
+.seg {
+  position: relative; z-index: 1; display: flex; align-items: center; gap: 7px; padding: 7px 15px;
+  border-radius: 999px; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); cursor: pointer;
+  white-space: nowrap; transition: color .25s;
 }
+.seg .icon { width: 14px; height: 14px; }
+.seg.active { color: #fff; }
 .tab-count {
-  background: var(--warning); color: #1a1200; font-size: 9px; font-weight: 800;
-  padding: 1px 6px; border-radius: 999px; line-height: 1.5; margin-left: auto;
+  background: var(--warning); color: #1a1200; font-size: 8.5px; font-weight: 800;
+  padding: 1px 5px; border-radius: 999px; line-height: 1.5; margin-left: 2px;
 }
-.tab-btn.active .tab-count { background: var(--accent); color: #fff; }
+.seg.active .tab-count { background: rgba(255,255,255,.28); color: #fff; }
 
-.sidebar-footer { padding: 12px; border-top: 1px solid var(--sidebar-border); display: flex; justify-content: flex-end; }
+.cmd-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.cmdk {
+  display: flex; align-items: center; gap: 8px; background: var(--bg-panel-alt); border: 1px solid var(--border);
+  border-radius: 999px; padding: 7px 12px 7px 14px; color: var(--text-muted); font-size: 11px; cursor: pointer;
+}
+.cmdk:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+.cmdk kbd {
+  font-size: 9px; font-weight: 700; background: var(--bg-panel); border: 1px solid var(--border-strong);
+  border-radius: 4px; padding: 1px 5px; color: var(--text-secondary); font-family: var(--font);
+}
 
 .header-right { display: flex; align-items: center; gap: 10px; }
 .status-badge {
@@ -220,23 +237,26 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 .status-dot.ok { background: var(--success); box-shadow: 0 0 8px var(--success); }
 .status-dot.err { background: var(--danger); }
 
+/* Pill-shaped now (was a rounded square) — one consistent circular language for every
+   icon-only control in the app: cmdbar actions, modal close buttons, draft-row tools. */
 .icon-btn {
   border: 1px solid var(--border); background: var(--bg-panel-alt); color: var(--text-secondary);
-  width: 30px; height: 30px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center;
-  cursor: pointer; transition: all .15s;
+  width: 32px; height: 32px; border-radius: 999px; display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .15s; flex-shrink: 0;
 }
 .icon-btn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--bg-hover); }
-.sidebar-footer .icon-btn { border-color: var(--sidebar-border); background: var(--sidebar-bg-alt); color: var(--sidebar-text); }
-.sidebar-footer .icon-btn:hover { color: var(--sidebar-text-active); }
 
-.app-content { display: flex; flex-direction: column; flex: 1; min-width: 0; height: 100%; }
-.topbar {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 15px 24px; border-bottom: 1px solid var(--border);
-  background: var(--bg-panel); flex-shrink: 0; gap: 16px; z-index: 3;
-  box-shadow: 0 1px 0 var(--border), 0 6px 16px -12px rgba(48,47,44,.2);
+.app-content { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden; }
+
+/* Page header — shown only for the Compiler tab, which never had a headline of its own
+   (Home has its own hero; Review/History already carry a panel title). Big uppercase
+   display title instead of a flat 15px label. */
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between; gap: 20px;
+  padding: 20px 22px 4px; flex-shrink: 0;
 }
-.topbar-title { font-family: var(--font-display); font-size: 15px; font-weight: 800; text-transform: uppercase; letter-spacing: -.01em; color: var(--text-primary); }
+.page-head .eyebrow { font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 6px; }
+.page-head h2 { font-family: var(--font-display); font-weight: 900; text-transform: uppercase; letter-spacing: -.025em; font-size: 24px; margin: 0; color: var(--text-primary); }
 
 /* ---------- Analytics strip ---------- */
 .stat-card { display: flex; align-items: center; gap: 11px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; box-shadow: var(--shadow-card); transition: transform .2s var(--ease-out), border-color .2s var(--ease-out), box-shadow .2s var(--ease-out); }
@@ -296,7 +316,11 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 #view-home { overflow-y: auto; }
 .hidden { display: none !important; }
 
-.workspace { display: flex; gap: 14px; height: 100%; }
+/* Two columns now (Matcher + Compiler) — the third "Workspace Settings" column moved into
+   a modal off the gear icon in the command bar, since sync/folder-path is a once-a-week
+   action that no longer needs a permanent seat at the table. */
+.workspace { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; height: 100%; }
+@media (max-width: 1080px) { .workspace { grid-template-columns: 1fr; } }
 
 .panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-panel); display: flex; flex-direction: column; overflow: hidden; transition: width .22s ease, min-width .22s ease; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
@@ -304,11 +328,8 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 .panel-title .icon { color: var(--accent); }
 .panel-body { padding: 18px; overflow-y: auto; flex: 1; }
 
-.panel-left { width: 300px; flex-shrink: 0; }
-.panel-left.collapsed { width: 46px; }
-.panel-left.collapsed .panel-body, .panel-left.collapsed .panel-title span:not(.icon) { display: none; }
-.panel-center { flex: 1; min-width: 0; }
-.panel-right { width: 430px; flex-shrink: 0; }
+.panel-center { min-width: 0; }
+.panel-right { min-width: 0; }
 
 /* ---------- Form elements ---------- */
 label.field-label { display: block; font-size: 9px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
