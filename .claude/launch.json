@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "uss-backend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "Set-Location -LiteralPath 'C:\\Users\\moham\\Website V2\\backend'; npm run dev"],
+      "port": 3001
+    },
+    {
+      "name": "uss-frontend",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-Command", "Set-Location -LiteralPath 'C:\\Users\\moham\\Website V2\\ui'; npm run dev"],
+      "port": 5173
+    }
+  ]
+}
