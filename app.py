@@ -71,6 +71,9 @@ def _load_sync_config():
 
 SYNC_CONFIG = _load_sync_config()
 
+# Matches this app's own output naming from compile_quotation: "{client}_Quotation_{ts}.ext".
+SELF_GENERATED_RE = re.compile(r'_Quotation_\d{8}_\d{4}\.(xlsx|docx|pdf)$', re.I)
+
 
 def _elapsed_years(quote_date):
     """Age of a historical quote in *fractional* years, for compounding the annual markup.
@@ -116,6 +119,28 @@ def _distance_to_similarity(distance):
     return round(max(0.0, min(1.0, cos)) * 100, 1)
 
 
+# Line items that price labour, logistics or fees rather than a physical product.
+# "storage" is deliberately absent: it describes a product feature far more often than a fee
+# here ("Lego Wall with Storage"), and wrongly classing a product as a service would cost it
+# its photo.
+_GENERIC_SERVICE_RE = re.compile(
+    r'\b(delivery|transport(ation)?|installation|install|crew|labour|labor|manpower|'
+    r'dismantl\w*|removal|freight|shipping|handling|rental|hire|'
+    r'supervis\w*|management fee|contingency|misc(ellaneous)?|sundr\w+|'
+    r'discount|vat|charges?|fees?)\b', re.I)
+
+
+def _is_generic_service(description):
+    """True when a line prices a service, so borrowing a product photo for it is misleading."""
+    text = str(description or "").strip()
+    if not text:
+        return True
+    first_line = text.split("\n")[0]
+    # Only treat it as a service when that is what the line is *about* — a product whose spec
+    # happens to mention "installation" further down still deserves its photo.
+    return bool(_GENERIC_SERVICE_RE.search(first_line))
+
+
 def crossfill_images(items, embeddings):
     """Fills in photos for items that have none by borrowing from the most similar item that
     does — the same product often appears with a photo in one quote and text-only in another.
@@ -131,7 +156,12 @@ def crossfill_images(items, embeddings):
         return 0
 
     have = [i for i, it in enumerate(items) if it.get("image_base64")]
-    need = [i for i, it in enumerate(items) if not it.get("image_base64")]
+    # A generic service line has no product to photograph, but its wording is close enough to
+    # the same wording in another job for the embedding to score a confident match — which is
+    # how "Delivery" ended up showing a photo lifted from a furniture quotation. Nothing here
+    # can be illustrated by borrowing, so these are left without a photo on purpose.
+    need = [i for i, it in enumerate(items)
+            if not it.get("image_base64") and not _is_generic_service(it.get("original_description", ""))]
     if not have or not need:
         return 0
 
@@ -260,6 +290,7 @@ class QuotationApi:
             excel_files, pdf_files, word_files = [], [], []
             skipped_folders = set()
             skipped_count = 0
+            self_generated = 0
             for file in path_obj.rglob("*"):
                 if file.name.startswith("~$") or not file.is_file():
                     continue
@@ -272,6 +303,13 @@ class QuotationApi:
                 if hit:
                     skipped_folders.add(hit)
                     skipped_count += 1
+                    continue
+                # Quotations this app produced are output, not source pricing. Re-reading them
+                # fed already-marked-up rates back into the library (the same Pirate Ship
+                # appeared at 29,120 / 35,200 / 42,592 as markup compounded on each pass) and
+                # scraped their header labels and totals in as products.
+                if SELF_GENERATED_RE.search(file.name):
+                    self_generated += 1
                     continue
                 if suffix == ".xlsx":
                     excel_files.append(file)
@@ -363,6 +401,9 @@ class QuotationApi:
             if skipped_count:
                 message += (f" Skipped {skipped_count} file(s) in excluded folder(s): "
                             f"{', '.join(sorted(skipped_folders))} — edit sync_config.json to change this.")
+            if self_generated:
+                message += (f" Ignored {self_generated} quotation(s) this app generated itself, "
+                            f"so their marked-up prices don't re-enter the price library.")
             return {
                 "success": True,
                 "indexed_count": len(unique_items),

@@ -236,6 +236,65 @@ def extract_venue(filename, header_texts=None, header_rows=None):
 
 # --- Item assembly ---------------------------------------------------------------
 
+# A product name has to actually name a product. The PDF reader walks raw text lines, and
+# anything left standing became a line item — so prices ("2,129.60"), totals ("-2,374.77"),
+# dates ("2026-07-24") and block labels ("Client Name:", "Valid Until:") were all indexed as
+# products and then surfaced in the Smart Matcher as real, priced results.
+#
+# The old guard was `^\d+(\.\d+)?$`, which only catches a bare integer or decimal — every
+# figure with a thousands separator, currency symbol, sign or bracket walked straight past it.
+#
+# Deliberately conservative: it rejects only lines that cannot be a product name. Verified
+# against the live index — removes 26 bogus rows while keeping every genuine short name
+# ("TV Wall", "Lego Table", "Zipline", "Mud Kitchen", "Jungle").
+_NUMERIC_ONLY_RE = re.compile(
+    r'^[\s$€£]*[-+(]?[\d,.\s]+%?\)?\s*(aed|usd|eur|dhs?|dirhams?)?\s*[-+)]?\s*$', re.I)
+_DATE_ONLY_RE = re.compile(r'^\s*\d{1,4}\s*[-/.]\s*\d{1,2}\s*[-/.]\s*\d{1,4}\s*$')
+
+# Layout words that survive as their own "line" when a table cell wraps in the PDF.
+_FRAGMENT_WORDS = {
+    'only', 'as req', 'as required', 'items', 'item', 'each', 'req', 'note', 'notes',
+    'incl', 'included', 'excl', 'etc', 'and', 'the', 'for', 'with', 'na', 'n/a',
+    'tbc', 'tbd', 'yes', 'no', 'all', 'new', 'same', 'total', 'subtotal',
+}
+
+
+def looks_like_description(text):
+    """True when a text line could plausibly be a product/service name."""
+    t = str(text or "").strip()
+    if len(t) < 3:
+        return False
+    if _NUMERIC_ONLY_RE.match(t) or _DATE_ONLY_RE.match(t):
+        return False
+    if sum(ch.isalpha() for ch in t) < 3:
+        return False
+    core = t.rstrip(':').strip().lower()
+    if core in _FRAGMENT_WORDS:
+        return False
+    # "Client Name:", "Valid Until:", "Timber House:" — a short trailing-colon line is the
+    # label of a block, not the thing being sold.
+    if t.endswith(':') and len(core.split()) <= 2:
+        return False
+    return True
+
+
+# Lines that read as continuation detail for the item above them rather than a new item:
+# dimension callouts, bulleted features, and parenthetical notes.
+_SPEC_LINE_RE = re.compile(
+    r'^\s*([-•*•]|\(|[LWHD]\s*\d|\d+\s*(mm|cm|m|sqm|ft)\b|measures\b|features\b|components\b|includes?\b)',
+    re.I)
+
+
+def looks_like_spec_line(text):
+    """True when a line is specification detail belonging to the preceding item."""
+    t = str(text or "").strip()
+    if not t or len(t) > 160:
+        return False
+    if _NUMERIC_ONLY_RE.match(t) or _DATE_ONLY_RE.match(t):
+        return False
+    return bool(_SPEC_LINE_RE.match(t)) or bool(re.search(r'\d+\s*[xX]\s*\d+', t))
+
+
 # Markers written by the PM actions in the review queue. Once present, an item is never
 # re-flagged, so approving/dismissing survives a re-sync of the same source file.
 REVIEW_CLEARED_MARKERS = ("corrected by pm", "dismissed by pm")
@@ -843,6 +902,30 @@ def _extract_trailing_numbers(line, max_count=4):
     return numbers, remaining
 
 
+def _collect_spec_lines(lines, start, limit=8):
+    """Gathers the specification lines that follow an item row in a PDF.
+
+    A PDF gives one text line at a time, so an item's measures and features arrive as separate
+    lines after its name. They used to be either dropped or — worse — picked up by the next
+    loop iteration and indexed as items in their own right. Collecting them here means the
+    spec travels with the product, which is what the client actually reads on the quote.
+
+    Stops at the first line that looks like a new item so it can never swallow the next row.
+    """
+    spec = []
+    for offset in range(limit):
+        i = start + offset
+        if i >= len(lines):
+            break
+        candidate = str(lines[i]).strip()
+        if not candidate:
+            continue
+        if not looks_like_spec_line(candidate):
+            break
+        spec.append(candidate)
+    return spec
+
+
 def parse_pdf_file(file_path):
     """Extracts items from PDF text via PyMuPDF (fitz), with venue/unit normalization.
 
@@ -932,7 +1015,7 @@ def parse_pdf_file(file_path):
 
             # --- Tier 1: same-line trailing numbers (row already flattened onto one line) ---
             trailing_numbers, remaining_desc = _extract_trailing_numbers(line)
-            if len(remaining_desc) >= 4 and len(trailing_numbers) >= 2:
+            if looks_like_description(remaining_desc) and len(trailing_numbers) >= 2:
                 if len(trailing_numbers) >= 3:
                     qty, rate, total = trailing_numbers[-3], trailing_numbers[-2], trailing_numbers[-1]
                     expected = qty * rate
@@ -947,8 +1030,10 @@ def parse_pdf_file(file_path):
                 if rate > 0:
                     line_y0, _ = boxes[idx] if idx < len(boxes) else (0, 0)
                     page_row_positions.append((len(items), line_y0))
+                    spec = _collect_spec_lines(lines, idx + 1)
+                    full_desc = remaining_desc + ("\n" + "\n".join(spec) if spec else "")
                     items.append(_build_item(
-                        description=remaining_desc, rate=rate, unit=normalize_unit(None, remaining_desc),
+                        description=full_desc, rate=rate, unit=normalize_unit(None, remaining_desc),
                         quote_date=file_date, venue=venue, venue_confidence=venue_confidence,
                         venue_reason=venue_reason, file_name=file_name, image_base64="",
                         rate_confidence=rate_confidence, rate_reason=rate_reason,
@@ -985,11 +1070,15 @@ def parse_pdf_file(file_path):
                     rate_found = numbers[-1][0]
                     offset_used = numbers[-1][1]
 
-            if rate_found is not None:
+            # Tier 2 is a positional guess, so the description gate matters most here: this is
+            # the path that turned "2,129.60" and "Client Name:" into priced line items.
+            if rate_found is not None and looks_like_description(line):
                 line_y0, _ = boxes[idx] if idx < len(boxes) else (0, 0)
                 page_row_positions.append((len(items), line_y0))
+                spec = _collect_spec_lines(lines, idx + 1)
+                full_line = line + ("\n" + "\n".join(spec) if spec else "")
                 items.append(_build_item(
-                    description=line, rate=rate_found, unit=normalize_unit(unit_found, line),
+                    description=full_line, rate=rate_found, unit=normalize_unit(unit_found, line),
                     quote_date=file_date, venue=venue, venue_confidence=venue_confidence,
                     venue_reason=venue_reason, file_name=file_name, image_base64="",
                     rate_confidence="low",

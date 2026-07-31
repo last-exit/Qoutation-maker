@@ -1,16 +1,16 @@
-# Graph Report - quotation-maker-app  (2026-07-31)
+# Graph Report - quotation-maker-app  (2026-08-01)
 
 ## Corpus Check
-- 21 files · ~25,466 words
+- 18 files · ~26,124 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 308 nodes · 583 edges · 14 communities (13 shown, 1 thin omitted)
+- 313 nodes · 594 edges · 12 communities (11 shown, 1 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 20 edges (avg confidence: 0.76)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `1fa29917`
+- Built from commit: `7ebababc`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,7 +29,7 @@
 - WhatsApp/Email Share Links
 
 ## God Nodes (most connected - your core abstractions)
-1. `QuotationApi` - 29 edges
+1. `QuotationApi` - 28 edges
 2. `Red Cube Smart Quotation Engine (index.html)` - 28 edges
 3. `api()` - 27 edges
 4. `showToast()` - 17 edges
@@ -37,8 +37,8 @@
 6. `icon()` - 16 edges
 7. `esc()` - 15 edges
 8. `syncFolder()` - 13 edges
-9. `switchTab()` - 12 edges
-10. `renderDraft()` - 12 edges
+9. `parse_pdf_file()` - 13 edges
+10. `switchTab()` - 12 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Red Cube Logo image asset (red_cube_logo.png)` --semantically_similar_to--> `CSS-drawn Red Cube Icon (brandlock cube3d)`  [INFERRED] [semantically similar]
@@ -60,15 +60,15 @@
 - **Semantic Search / Smart Matcher subsystem** — app_searchmatcher, requirements_chromadb, requirements_sentence_transformers [INFERRED 0.85]
 - **Google Drive Historical Data Sync Pipeline** — app_syncfolder, requirements_google_api_python_client, requirements_google_auth_oauthlib, requirements_google_auth_httplib2, requirements_pymupdf, requirements_datefinder [INFERRED 0.75]
 
-## Communities (14 total, 1 thin omitted)
+## Communities (12 total, 1 thin omitted)
 
 ### Community 0 - "Desktop App Backend API"
 Cohesion: 0.05
-Nodes (18): crossfill_images(), _distance_to_similarity(), _elapsed_years(), main(), QuotationApi, Converts ChromaDB's squared-L2 distance into a real cosine similarity percentage, Fills in photos for items that have none by borrowing from the most similar item, Lazy loads sentence-transformers model to save initial window boot time. (+10 more)
+Nodes (20): crossfill_images(), _distance_to_similarity(), _elapsed_years(), _is_generic_service(), main(), QuotationApi, Converts ChromaDB's squared-L2 distance into a real cosine similarity percentage, True when a line prices a service, so borrowing a product photo for it is mislea (+12 more)
 
 ### Community 1 - "Historical Quote Parsing Engine"
-Cohesion: 0.08
-Nodes (42): assign_images_to_rows(), _build_item(), _cell_image_base64(), classify_columns(), clean_rate(), _distinct_row_cells(), evaluate_review_flags(), extract_date() (+34 more)
+Cohesion: 0.07
+Nodes (48): assign_images_to_rows(), _build_item(), _cell_image_base64(), classify_columns(), clean_rate(), _collect_spec_lines(), _distinct_row_cells(), evaluate_review_flags() (+40 more)
 
 ### Community 2 - "Excel/Word Document Generation"
 Cohesion: 0.08
@@ -121,9 +121,9 @@ _Questions this graph is uniquely positioned to answer:_
 - **What connects `ICONS`, `draftItems`, `historyCache` to the rest of the system?**
   _24 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Desktop App Backend API` be split into smaller, more focused modules?**
-  _Cohesion score 0.05319148936170213 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05272108843537415 - nodes in this community are weakly interconnected._
 - **Should `Historical Quote Parsing Engine` be split into smaller, more focused modules?**
-  _Cohesion score 0.07862679955703211 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.06802721088435375 - nodes in this community are weakly interconnected._
 - **Should `Excel/Word Document Generation` be split into smaller, more focused modules?**
   _Cohesion score 0.07928118393234672 - nodes in this community are weakly interconnected._
 - **Should `Frontend-Backend API Bridge` be split into smaller, more focused modules?**
