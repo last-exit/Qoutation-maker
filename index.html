@@ -148,6 +148,10 @@
       </div>
     </div>
 
+    <!-- Drag to rebalance matcher vs. compiler; double-click resets. -->
+    <div class="workspace-splitter" id="workspace-splitter" role="separator" aria-orientation="vertical"
+         aria-label="Resize panels" tabindex="0" title="Drag to resize · double-click to reset"></div>
+
     <!-- Right: quotation compiler -->
     <div class="panel panel-right">
       <div class="panel-header">
@@ -156,30 +160,25 @@
       </div>
       <div class="panel-body" style="display:flex;flex-direction:column;height:100%;padding-bottom:0;">
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
-          <div><label class="field-label">Client Name</label><input type="text" id="client-name-input" class="input" value="Donut"></div>
-          <div><label class="field-label">Client Phone (optional)</label><input type="text" id="client-phone-input" class="input" placeholder="+9715..."></div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-          <div><label class="field-label">Venue</label><input type="text" id="client-venue-input" class="input" placeholder="e.g. Kite Beach"></div>
-          <div><label class="field-label">Valid For (Days)</label><input type="number" id="validity-days-input" class="input" value="14" min="1"></div>
-        </div>
-
-        <!-- Quick Quote Bundles: 1-click insertion of common project packages -->
-        <div class="bundles-section">
-          <div class="bundles-header" onclick="toggleBundles()">
-            <span class="bundles-title"><span class="icon icon-sm" data-icon="layers"></span> Quick Quote Bundles</span>
-            <span class="icon icon-sm" id="bundles-chevron" data-icon="chevronDown"></span>
-          </div>
-          <div id="bundles-list" class="bundles-list"></div>
+        <!-- One row instead of two 2-up rows: the client block is filled once per quote, while
+             the item list below it is worked in continuously, so the vertical space belongs there. -->
+        <div class="client-fields">
+          <div><label class="field-label" for="client-name-input">Client Name</label><input type="text" id="client-name-input" class="input" placeholder="Client name"></div>
+          <div><label class="field-label" for="client-phone-input">Phone <span class="field-optional">optional</span></label><input type="text" id="client-phone-input" class="input" placeholder="+9715..."></div>
+          <div><label class="field-label" for="client-venue-input">Venue</label><input type="text" id="client-venue-input" class="input" placeholder="e.g. Kite Beach"></div>
+          <div><label class="field-label" for="validity-days-input">Valid (Days)</label><input type="number" id="validity-days-input" class="input" value="14" min="1"></div>
         </div>
 
-        <div id="draft-items-container" style="flex:1;overflow-y:auto;margin-bottom:10px;">
+        <div id="draft-items-container" style="flex:1;overflow-y:auto;margin-bottom:0;">
           <div class="empty-state"><span class="icon icon-lg" data-icon="sheet"></span><p>No items in draft quote.</p><p style="margin-top:4px;">Select items from matches or add a custom row.</p></div>
         </div>
       </div>
 
-      <div style="padding:14px 15px;border-top:1px solid var(--border);flex-shrink:0;">
+      <!-- Drag to trade space between the item list and the pricing block; double-click resets. -->
+      <div class="compiler-vsplit" id="compiler-vsplit" role="separator" aria-orientation="horizontal"
+           aria-label="Resize items and pricing" tabindex="0" title="Drag to resize · double-click to reset"></div>
+
+      <div class="compiler-footer" id="compiler-footer">
         <div class="summary-box">
           <div class="summary-line"><span>Subtotal (Excl. VAT)</span><span id="summary-subtotal">0.00 AED</span></div>
           <div class="summary-line hidden" id="summary-discount-row"><span>Discount</span><span id="summary-discount" style="color:var(--danger);">0.00 AED</span></div>
@@ -246,9 +245,13 @@
       <div class="panel-title"><span class="icon" data-icon="alert"></span><span>Needs Review</span></div>
     </div>
     <div style="padding:12px 15px 0;">
-      <p style="font-size:11px;color:var(--text-secondary);line-height:1.5;margin:0 0 12px;">
-        These line items came from old files where the price or venue couldn't be read with confidence — grouped below by source file.
-        <b>Approve</b> if you correct and confirm the values; <b>Dismiss</b> if it's fine as-is or doesn't matter. Either way, it won't be flagged again.
+      <p style="font-size:11.5px;color:var(--text-secondary);line-height:1.6;margin:0 0 12px;">
+        When a folder is synced, every line item from your old quotes gets added to the price index the Smart Matcher
+        searches. The ones below came through with something missing — <b>no price</b>, <b>no venue</b>, or figures that
+        didn't add up — so they'd give you a bad suggestion later. Each card says what's wrong and which box to fill in.
+        <br>
+        <b>Save fix</b> writes your correction into the index and it survives future re-syncs.
+        <b>Leave as-is</b> keeps the item exactly as it is and stops flagging it. Neither deletes anything.
       </p>
     </div>
     <div class="panel-body" style="padding-top:0;">

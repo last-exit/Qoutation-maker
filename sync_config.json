@@ -1,0 +1,15 @@
+{
+  "default_path": "G:\\My Drive\\BOOM TREE\\ALL THE QUOTATIONS",
+  "exclude_folders": [
+    "Google AI Studio",
+    "Gemini Gems",
+    "Colab Notebooks",
+    "Opal",
+    "Google Earth",
+    "Reports",
+    "__pycache__",
+    "venv",
+    ".git",
+    "node_modules"
+  ]
+}

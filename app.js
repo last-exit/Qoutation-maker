@@ -42,7 +42,7 @@ const ICONS = {
 function svgWrap(name) {
   return `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
 }
-function icon(name, cls) { return `<span class="${cls || 'icon'}">${svgWrap(name)}</span>`; }
+function icon(name, cls) { return `<span class="icon ${cls || ''}">${svgWrap(name)}</span>`; }
 
 // ---------------------------------------------------------------------------
 // State
@@ -55,6 +55,7 @@ let currentImagePickerItemId = null;
 let lastCompileResult = null;
 let historyCache = [];
 let lastMatches = [];
+let lastLibraryMatches = [];
 
 function api() { return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null; }
 function uid() { return Date.now() + '_' + Math.random().toString(36).slice(2); }
@@ -151,6 +152,8 @@ initTheme();
 hydrateIcons();
 renderDraft();
 positionActiveTabPill();
+initWorkspaceSplitter();
+initCompilerVSplit();
 
 window.addEventListener('pywebviewready', bootBackend);
 setTimeout(function () { if (api()) bootBackend(); }, 800);
@@ -160,7 +163,6 @@ function bootBackend() {
   updateAnalyticsDashboard();
   applyCompanyBranding();
   loadHomeDashboard();
-  loadBundles();
 }
 
 function applyCompanyBranding() {
@@ -244,6 +246,183 @@ function toggleTheme() {
 function updateThemeIcon(theme) {
   const btn = document.getElementById('theme-toggle-icon');
   if (btn) btn.innerHTML = svgWrap(theme === 'light' ? 'moon' : 'sun');
+}
+
+// ---------------------------------------------------------------------------
+// Resizable workspace (Smart Matcher | Quotation Compiler)
+// ---------------------------------------------------------------------------
+function initWorkspaceSplitter() {
+  // Kept function-local: this runs from the top-level boot block above, so file-scope
+  // `const`s down here would still be in their temporal dead zone and throw.
+  // Even split. The compiler holds the draft rows (description + unit/qty/rate + thumbnail),
+  // which cramp far more readily than a list of match cards, so it no longer gets the
+  // smaller half by default. Drag or double-click to re-balance.
+  const SPLIT_DEFAULT = 0.5;
+  const SPLIT_MIN_PX = 340;           // below this a panel's form grids start wrapping badly
+  const SPLITTER_PX = 18;
+
+  const splitter = document.getElementById('workspace-splitter');
+  const workspace = splitter && splitter.closest('.workspace');
+  if (!workspace) return;
+
+  let frac = parseFloat(localStorage.getItem('rc-workspace-split'));
+  if (!(frac > 0 && frac < 1)) frac = SPLIT_DEFAULT;
+  applySplit(frac);
+
+  function applySplit(f) {
+    const avail = workspace.getBoundingClientRect().width - SPLITTER_PX;
+    // Clamp in pixels, not fractions, so the floor holds at any window size.
+    if (avail > SPLIT_MIN_PX * 2) {
+      const minF = SPLIT_MIN_PX / avail;
+      f = Math.min(1 - minF, Math.max(minF, f));
+    } else {
+      f = Math.min(0.8, Math.max(0.2, f));
+    }
+    frac = f;
+    workspace.style.setProperty('--ws-left', f.toFixed(4) + 'fr');
+    workspace.style.setProperty('--ws-right', (1 - f).toFixed(4) + 'fr');
+    splitter.setAttribute('aria-valuenow', Math.round(f * 100));
+  }
+
+  function pointToFrac(clientX) {
+    const rect = workspace.getBoundingClientRect();
+    return (clientX - rect.left - SPLITTER_PX / 2) / (rect.width - SPLITTER_PX);
+  }
+
+  function stopDrag() {
+    if (!workspace.classList.contains('ws-dragging')) return;
+    workspace.classList.remove('ws-dragging');
+    document.body.classList.remove('ws-dragging');
+    localStorage.setItem('rc-workspace-split', String(frac));
+  }
+
+  splitter.addEventListener('mousedown', function (e) {
+    e.preventDefault();  // stop the drag from selecting text across both panels
+    splitter.focus();    // preventDefault also suppresses focus, so hand it over explicitly
+    workspace.classList.add('ws-dragging');
+    document.body.classList.add('ws-dragging');
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!workspace.classList.contains('ws-dragging')) return;
+    applySplit(pointToFrac(e.clientX));
+  });
+  document.addEventListener('mouseup', stopDrag);
+  // Pointer can leave the window mid-drag; without this the splitter stays "stuck" to it.
+  window.addEventListener('blur', stopDrag);
+
+  splitter.addEventListener('dblclick', function () {
+    applySplit(SPLIT_DEFAULT);
+    localStorage.setItem('rc-workspace-split', String(frac));
+  });
+
+  splitter.addEventListener('keydown', function (e) {
+    const step = e.shiftKey ? 0.05 : 0.02;
+    if (e.key === 'ArrowLeft') applySplit(frac - step);
+    else if (e.key === 'ArrowRight') applySplit(frac + step);
+    else if (e.key === 'Home') applySplit(SPLIT_DEFAULT);
+    else return;
+    e.preventDefault();
+    localStorage.setItem('rc-workspace-split', String(frac));
+  });
+
+  // Re-clamp on window resize so a shrunken window can't push a panel under its minimum.
+  window.addEventListener('resize', function () { applySplit(frac); });
+}
+
+// ---------------------------------------------------------------------------
+// Compiler vertical splitter (item list | pricing block)
+// ---------------------------------------------------------------------------
+function initCompilerVSplit() {
+  const splitter = document.getElementById('compiler-vsplit');
+  const footer = document.getElementById('compiler-footer');
+  const panel = splitter && splitter.closest('.panel-right');
+  const list = document.getElementById('draft-items-container');
+  if (!splitter || !footer || !panel || !list) return;
+
+  const MIN_FOOTER = 150;  // summary + format row + Generate button must stay reachable
+  const MIN_LIST = 90;
+  let footerH = parseFloat(localStorage.getItem('rc-compiler-footer-h'));
+
+  function naturalFooterHeight() {
+    // Measure once with the height constraint lifted, so "reset" returns to content size.
+    const prev = footer.style.height;
+    footer.style.height = 'auto';
+    const h = footer.getBoundingClientRect().height;
+    footer.style.height = prev;
+    return h;
+  }
+
+  function applyFooter(h) {
+    const panelRect = panel.getBoundingClientRect();
+    // The compiler view starts hidden, so every rect here is 0 until it is first shown.
+    // Sizing off those zeros pins the footer to MIN_FOOTER and cuts the Generate button off.
+    if (panelRect.height <= 0) return;
+    const listTop = list.getBoundingClientRect().top - panelRect.top;
+    const maxFooter = Math.max(MIN_FOOTER, panelRect.height - listTop - MIN_LIST - splitter.offsetHeight);
+    footerH = Math.min(maxFooter, Math.max(MIN_FOOTER, h));
+    footer.style.height = footerH + 'px';
+    splitter.setAttribute('aria-valuenow', Math.round(footerH));
+  }
+
+  // Until the PM interacts, the footer is content-sized and footerH is unset. Any relative
+  // adjustment (arrow keys) needs a real starting number or it resolves to NaN and no-ops.
+  function ensureSeeded() {
+    if (!(footerH > 0)) footerH = footer.getBoundingClientRect().height;
+  }
+
+  function stopDrag() {
+    if (!panel.classList.contains('vsplit-dragging')) return;
+    panel.classList.remove('vsplit-dragging');
+    document.body.classList.remove('vsplit-dragging');
+    localStorage.setItem('rc-compiler-footer-h', String(footerH));
+  }
+
+  splitter.addEventListener('mousedown', function (e) {
+    e.preventDefault();
+    splitter.focus();
+    ensureSeeded();
+    panel.classList.add('vsplit-dragging');
+    document.body.classList.add('vsplit-dragging');
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!panel.classList.contains('vsplit-dragging')) return;
+    // Footer grows as the pointer moves up, so measure from the panel's bottom edge.
+    applyFooter(panel.getBoundingClientRect().bottom - e.clientY);
+  });
+  document.addEventListener('mouseup', stopDrag);
+  window.addEventListener('blur', stopDrag);
+
+  splitter.addEventListener('dblclick', function () {
+    applyFooter(naturalFooterHeight());
+    localStorage.setItem('rc-compiler-footer-h', String(footerH));
+  });
+
+  splitter.addEventListener('keydown', function (e) {
+    const step = e.shiftKey ? 40 : 14;
+    ensureSeeded();
+    if (e.key === 'ArrowUp') applyFooter(footerH + step);
+    else if (e.key === 'ArrowDown') applyFooter(footerH - step);
+    else if (e.key === 'Home') applyFooter(naturalFooterHeight());
+    else return;
+    e.preventDefault();
+    localStorage.setItem('rc-compiler-footer-h', String(footerH));
+  });
+
+  window.addEventListener('resize', function () { if (footerH > 0) applyFooter(footerH); });
+
+  // Left content-sized unless the PM has actually chosen a height. A default of "whatever the
+  // pricing block needs" is the one value guaranteed to keep the Generate button on screen.
+  if (footerH > 0) {
+    // Restore lazily: the panel has no measurable size until the compiler tab is first shown.
+    const ro = new ResizeObserver(function () {
+      if (panel.getBoundingClientRect().height > 0) {
+        applyFooter(footerH);
+        ro.disconnect();
+      }
+    });
+    ro.observe(panel);
+    applyFooter(footerH);
+  }
 }
 
 const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', review: 'Needs Review', history: 'Quotation History' };
@@ -414,6 +593,35 @@ function searchMatcher(event) {
   });
 }
 
+// The markup compounds over a quote's real age, so age is what explains the adjusted rate.
+// "0.014y" is noise; "5 days old" is the reason the number barely moved.
+function formatAge(years) {
+  const y = Number(years) || 0;
+  const days = Math.round(y * 365.25);
+  if (days < 1) return 'today';
+  if (days < 31) return `${days} day${days === 1 ? '' : 's'}`;
+  const months = Math.round(days / 30.44);
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'}`;
+  const wholeYears = Math.floor(y);
+  const remMonths = Math.round((y - wholeYears) * 12);
+  if (remMonths === 0 || remMonths === 12) return `${wholeYears + (remMonths === 12 ? 1 : 0)}y`;
+  return `${wholeYears}y ${remMonths}mo`;
+}
+
+// Show the uplift that was actually applied, not the annual rate that was requested — a
+// week-old quote earns ~0% and the label must say so rather than claiming the slider value.
+function upliftHtml(m) {
+  const original = Number(m.original_rate) || 0;
+  const adjusted = Number(m.adjusted_rate) || 0;
+  const pct = original > 0 ? ((adjusted - original) / original) * 100 : 0;
+  if (pct < 0.05) {
+    return `<div><div class="rate-label">Adjusted</div>
+      <div style="color:var(--text-muted);" title="Too recent for the ${Math.round(activeMarkup * 100)}% annual markup to have accrued yet.">No uplift yet</div></div>`;
+  }
+  return `<div><div class="rate-label" style="color:var(--accent-strong)">Adjusted (+${pct.toFixed(1)}%)</div>
+    <div style="color:var(--accent-strong);font-weight:700;" title="${Math.round(activeMarkup * 100)}% annual markup compounded over ${formatAge(m.elapsed_years)}.">${money(adjusted)} AED</div></div>`;
+}
+
 function renderMatches(matches) {
   const container = document.getElementById('matches-list');
   if (matches.length === 0) {
@@ -434,13 +642,15 @@ function renderMatches(matches) {
           <div class="match-meta-row">
             <span class="chip chip-accent">${m.similarity}% Match</span>
             <span class="chip chip-muted">${icon('pin', 'icon-sm')} ${esc(m.venue)}</span>
-            <span class="chip chip-muted">${icon('calendar', 'icon-sm')} ${esc(m.quote_date)} (${m.elapsed_years}y)</span>
+            <span class="chip chip-muted">${icon('calendar', 'icon-sm')} ${esc(m.quote_date)} · ${formatAge(m.elapsed_years)} old</span>
+            ${m.file_name ? `<button class="chip chip-link" title="Open ${esc(m.file_name)} to check this item against the original"
+                 onclick="event.stopPropagation(); openSourceFile('${esc(m.file_name).replace(/'/g, "\\'")}')">${icon('sheet', 'icon-sm')} Open file</button>` : ''}
           </div>
           <div class="match-desc">${esc(m.description)}</div>
           <div class="match-rates">
             <div style="display:flex;gap:18px;">
               <div><div class="rate-label">Original</div><div>${money(m.original_rate)} AED</div></div>
-              <div><div class="rate-label" style="color:var(--accent-strong)">Adjusted (${Math.round(activeMarkup * 100)}%)</div><div style="color:var(--accent-strong);font-weight:700;">${money(m.adjusted_rate)} AED</div></div>
+              ${upliftHtml(m)}
             </div>
             <div style="font-size:9.5px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:4px;">Add to draft ${icon('arrowRight', 'icon-sm')}</div>
           </div>
@@ -462,63 +672,6 @@ function addMatchedItemToDraft(item) {
 function addCustomDraftRow() {
   draftItems.push({ id: uid(), description: 'Custom Event Production Item', unit: 'Pcs', qty: 1, rate: 0, image_base64: '', image_source: '' });
   renderDraft();
-}
-
-// --- Quick Quote Bundles ----------------------------------------------------------
-// Preset packages of commonly-quoted-together line items, editable in bundles.json.
-
-let bundlesCache = [];
-
-function loadBundles() {
-  if (!api()) return;
-  api().get_bundles().then(function (res) {
-    bundlesCache = res.bundles || [];
-    renderBundles();
-  }).catch(function () { /* bundles are optional — never block the compiler */ });
-}
-
-function renderBundles() {
-  const list = document.getElementById('bundles-list');
-  if (!list) return;
-  if (bundlesCache.length === 0) { list.innerHTML = ''; return; }
-
-  list.innerHTML = bundlesCache.map(function (b, idx) {
-    const total = (b.items || []).reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.rate) || 0), 0);
-    return `
-      <button class="bundle-card" onclick="insertBundle(${idx})" title="${esc(b.description || '')}">
-        <span class="bundle-icon">${icon(b.icon || 'layers', 'icon-sm')}</span>
-        <span class="bundle-text">
-          <span class="bundle-name">${esc(b.name)}</span>
-          <span class="bundle-meta">${(b.items || []).length} items &middot; <span class="num">${money(total)}</span> AED</span>
-        </span>
-        <span class="bundle-add">${icon('plus', 'icon-sm')}</span>
-      </button>`;
-  }).join('');
-}
-
-function toggleBundles() {
-  const list = document.getElementById('bundles-list');
-  const chevron = document.getElementById('bundles-chevron');
-  const collapsed = list.classList.toggle('collapsed');
-  if (chevron) chevron.innerHTML = svgWrap(collapsed ? 'chevronRight' : 'chevronDown');
-}
-
-function insertBundle(idx) {
-  const bundle = bundlesCache[idx];
-  if (!bundle) return;
-  (bundle.items || []).forEach(function (it) {
-    draftItems.push({
-      id: uid(),
-      description: it.description,
-      unit: it.unit || 'Pcs',
-      qty: Number(it.qty) || 1,
-      rate: Number(it.rate) || 0,
-      image_base64: '',
-      image_source: '',
-    });
-  });
-  renderDraft();
-  showToast(`Added "${bundle.name}" (${(bundle.items || []).length} items) to the draft.`, 'success');
 }
 
 // ---------------------------------------------------------------------------
@@ -565,11 +718,11 @@ function renderDraft() {
           </div>
           <div>
             <label class="field-label">Qty</label>
-            <input type="number" class="input" value="${item.qty}" oninput="updateDraftValue('${item.id}','qty',parseFloat(this.value)||0)"/>
+            <input type="number" min="0" step="1" class="input" value="${item.qty}" oninput="updateDraftValue('${item.id}','qty',parseFloat(this.value)||0)"/>
           </div>
           <div>
             <label class="field-label">Rate (AED)</label>
-            <input type="number" class="input num" id="rate-input-${item.id}" value="${item.rate}" style="text-align:right;" oninput="updateDraftValue('${item.id}','rate',parseFloat(this.value)||0)"/>
+            <input type="number" min="0" step="0.01" class="input num" id="rate-input-${item.id}" value="${item.rate}" style="text-align:right;" oninput="updateDraftValue('${item.id}','rate',parseFloat(this.value)||0)"/>
           </div>
         </div>
         <div class="pct-row">
@@ -590,6 +743,10 @@ function renderDraft() {
 function updateDraftValue(id, key, val) {
   const item = draftItems.find(i => i.id === id);
   if (!item) return;
+  // A negative qty and a negative rate multiply back to a positive line total, so a typo'd
+  // minus sign used to inflate the subtotal silently. Neither value is ever legitimately
+  // below zero on a quotation; clamp at the source rather than trying to catch it later.
+  if ((key === 'qty' || key === 'rate') && (!isFinite(val) || val < 0)) val = 0;
   item[key] = val;
   if (key === 'qty' || key === 'rate') updateSummary();
 }
@@ -681,14 +838,22 @@ function runLibrarySearch() {
       results.innerHTML = `<div class="empty-state" style="padding:16px;">${icon('sparkles', 'icon-lg')}<p>Nothing saved yet for something like this.</p><p style="margin-top:4px;">Set a real photo below, then save it here for next time.</p></div>`;
       return;
     }
-    results.innerHTML = `<div class="image-grid">${res.matches.map(m => `
+    // Hold the matches and reference them by index: inlining each data URI into an onclick
+    // attribute duplicated every thumbnail's full base64 payload into the HTML string.
+    lastLibraryMatches = res.matches;
+    results.innerHTML = `<div class="image-grid">${res.matches.map((m, i) => `
       <div style="position:relative;">
-        <img src="${m.image_base64}" onclick="applyImageToItem('${m.image_base64.replace(/'/g, "\\'")}')" title="${esc(m.description)}"/>
+        <img src="${esc(m.image_base64)}" onclick="applyLibraryMatch(${i})" title="${esc(m.description)}"/>
         <span class="chip chip-accent" style="position:absolute;bottom:4px;left:4px;font-size:8.5px;padding:1px 6px;">${m.similarity}%</span>
       </div>`).join('')}</div>`;
   }).catch(function (err) {
     results.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(err)}</span></div>`;
   });
+}
+
+function applyLibraryMatch(idx) {
+  const m = lastLibraryMatches[idx];
+  if (m) applyImageToItem(m.image_base64);
 }
 
 function saveDraftImageToLibrary(itemId) {
@@ -713,35 +878,48 @@ function runImageSearch() {
       results.innerHTML = `<div class="banner banner-warning">${icon('alert', 'icon')}<span>${esc(res.error || 'No internet connection — try Paste URL or Upload instead.')}</span></div>`;
       return;
     }
-    results.innerHTML = `<div class="image-grid">${res.results.map(r => `<img src="${r.thumbnail_url}" onclick="selectSuggestedImage('${r.source_url.replace(/'/g, '%27')}')"/>`).join('')}</div>`;
+    // These URLs come from a third-party search endpoint, so they are untrusted input.
+    // Escape them into the attributes and hand the URL over via dataset rather than
+    // interpolating it into an inline handler — a quote in the URL used to break out of
+    // src="..." and inject a live event handler.
+    results.innerHTML = `<div class="image-grid">${res.results.map(r =>
+      `<img src="${esc(r.thumbnail_url)}" data-source-url="${esc(r.source_url)}"
+            onclick="selectSuggestedImage(this.dataset.sourceUrl)"/>`).join('')}</div>`;
   }).catch(function (err) {
     results.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(err)}</span></div>`;
   });
 }
 function selectSuggestedImage(sourceUrl) {
   if (!api()) return;
+  const targetId = currentImagePickerItemId;
   api().fetch_image_from_url(sourceUrl).then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64);
+    if (res.success) applyImageToItem(res.image_base64, '', targetId);
     else showToast('Could not fetch that image: ' + res.error, 'error');
   });
 }
 function pasteImageUrl() {
   const url = document.getElementById('image-url-input').value.trim();
   if (!url || !api()) return;
+  const targetId = currentImagePickerItemId;
   api().fetch_image_from_url(url).then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64);
+    if (res.success) applyImageToItem(res.image_base64, '', targetId);
     else showToast('Could not fetch that image: ' + res.error, 'error');
   });
 }
 function uploadImageForItem() {
   if (!api()) return;
+  const targetId = currentImagePickerItemId;
   api().upload_image_dialog().then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64);
+    if (res.success) applyImageToItem(res.image_base64, '', targetId);
     else if (res.error !== 'No file selected.') showToast('Upload failed: ' + res.error, 'error');
   });
 }
-function applyImageToItem(base64, source) {
-  const item = draftItems.find(i => i.id === currentImagePickerItemId);
+// targetId pins the image to the row the picker was opened for. Fetches are async, so
+// without it a slow download lands on whichever row is selected when it finally resolves —
+// or is dropped entirely if the picker was closed in the meantime.
+function applyImageToItem(base64, source, targetId) {
+  const id = targetId || currentImagePickerItemId;
+  const item = draftItems.find(i => i.id === id);
   if (item) {
     item.image_base64 = base64;
     item.image_source = source || '';
@@ -753,9 +931,47 @@ function applyImageToItem(base64, source) {
 // ---------------------------------------------------------------------------
 // Compile / generate
 // ---------------------------------------------------------------------------
+// Everything worth stopping a PM for, gathered before the files are written. This is the one
+// action in the app that produces a document a paying client will read, and it was previously
+// a single unguarded click.
+function preflightWarnings() {
+  const warnings = [];
+  const client = document.getElementById('client-name-input').value.trim();
+  const venue = document.getElementById('client-venue-input').value.trim();
+
+  if (!client) warnings.push('No client name — the quotation will be addressed to "Client".');
+  if (!venue) warnings.push('No venue set.');
+
+  const zeroRate = draftItems.filter(i => !(Number(i.rate) > 0)).length;
+  if (zeroRate > 0) warnings.push(`${zeroRate} item(s) priced at 0.00 AED.`);
+
+  const zeroQty = draftItems.filter(i => !(Number(i.qty) > 0)).length;
+  if (zeroQty > 0) warnings.push(`${zeroQty} item(s) with a quantity of 0.`);
+
+  const placeholder = draftItems.filter(i => /^\s*custom event production item\s*$/i.test(i.description || '')).length;
+  if (placeholder > 0) warnings.push(`${placeholder} item(s) still using the default description.`);
+
+  const noDesc = draftItems.filter(i => !(i.description || '').trim()).length;
+  if (noDesc > 0) warnings.push(`${noDesc} item(s) with no description.`);
+
+  return warnings;
+}
+
 function compileQuote() {
   if (draftItems.length === 0) return;
   if (!api()) { showToast('Backend connection missing.', 'error'); return; }
+
+  const warnings = preflightWarnings();
+  if (warnings.length > 0) {
+    const total = document.getElementById('summary-total').innerText;
+    const proceed = confirm(
+      `This quotation is about to be generated for ${total}.\n\n` +
+      `Before it goes out:\n` +
+      warnings.map(w => '  • ' + w).join('\n') +
+      `\n\nGenerate anyway?`
+    );
+    if (!proceed) return;
+  }
 
   const formats = [];
   if (document.getElementById('format-xlsx').checked) formats.push('xlsx');
@@ -788,6 +1004,11 @@ function compileQuote() {
       showSuccessModal(res, payload);
       updateAnalyticsDashboard();
       showToast('Quotation generated successfully.', 'success');
+      // A photo that failed to embed leaves a gap in a document the PM is about to send,
+      // so it needs saying out loud rather than only in the console.
+      if (res.image_failures > 0) {
+        showToast(`${res.image_failures} photo(s) could not be embedded — check those rows before sending.`, 'warning', 8000);
+      }
     } else {
       feedback.classList.remove('hidden');
       feedback.className = 'banner banner-error';
@@ -965,10 +1186,20 @@ function loadReviewQueue() {
   });
 }
 
-function confidenceChip(level) {
-  if (level === 'high') return `<span class="chip chip-accent">${icon('check', 'icon-sm')} High</span>`;
-  if (level === 'medium') return `<span class="chip chip-warning">Medium</span>`;
-  return `<span class="chip chip-danger">${icon('alert', 'icon-sm')} Low</span>`;
+// Each backend reason maps to the field it blocks and to plain language. The old card showed
+// abstract "rate: Low / venue: Low" confidence chips, which contradicted the actual flags
+// (an item could read "rate High" while being queued precisely for a missing rate) and never
+// said which of the three boxes to touch.
+const REVIEW_REASONS = {
+  'missing unit rate': { field: 'rate', label: 'No price', fix: 'Type the rate this item was actually sold at.' },
+  'missing description': { field: null, label: 'No description', fix: 'The source row had no readable text — dismiss it unless you recognise it.' },
+  'unverified venue': { field: 'venue', label: 'Venue unknown', fix: 'Name the venue this job was for.' },
+  'reconcile': { field: 'rate', label: "Price doesn't add up", fix: "The rate didn't match the row's own line total — check which is right." },
+};
+
+function reviewReasonInfo(reason) {
+  const key = Object.keys(REVIEW_REASONS).find(k => String(reason).includes(k));
+  return key ? REVIEW_REASONS[key] : { field: null, label: String(reason), fix: '' };
 }
 
 function reviewEmptyState() {
@@ -1002,7 +1233,11 @@ function renderReviewQueue(items) {
       <div class="review-file-group" id="review-group-${groupId}">
         <div class="review-file-header">
           <div class="review-file-name" title="${esc(fileName)}">${icon('sheet', 'icon-sm')} ${esc(fileName)} <span class="chip chip-muted">${groupItems.length}</span></div>
-          <button class="btn btn-ghost btn-sm" onclick="dismissReviewGroup('${safeFile}')">${icon('check', 'icon-sm')} Dismiss All in This File</button>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <button class="btn btn-ghost btn-sm" onclick="openSourceFile('${safeFile}')"
+                    title="Open the original file to see this row in context">${icon('sheet', 'icon-sm')} Open File</button>
+            <button class="btn btn-ghost btn-sm" onclick="dismissReviewGroup('${safeFile}')">${icon('check', 'icon-sm')} Dismiss All in This File</button>
+          </div>
         </div>
         <div class="review-bulk-row">
           ${icon('pin', 'icon-sm')}
@@ -1012,32 +1247,39 @@ function renderReviewQueue(items) {
         </div>
         ${venueOnly ? `<div class="review-bulk-hint">Only the venue needs confirming for this file — set it above and the whole group clears.</div>` : ''}`;
     groupItems.forEach(function (it) {
+      const infos = (it.reasons || []).map(reviewReasonInfo);
+      const badExpr = infos.some(i => i.field === 'rate');
+      const badVenue = infos.some(i => i.field === 'venue');
+      const badges = infos.map(i => `<span class="chip chip-danger">${icon('alert', 'icon-sm')} ${esc(i.label)}</span>`).join('');
+      const fixes = infos.filter(i => i.fix).map(i => `<li>${esc(i.fix)}</li>`).join('');
       html += `
         <div class="review-card anim-in" style="animation-delay:${Math.min(cardIdx * 35, 350)}ms;" id="review-card-${it.id}" data-file="${esc(fileName)}">
           <div class="review-card-head">
             <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              ${badges}
               <span class="chip chip-muted">${icon('calendar', 'icon-sm')} ${esc(it.quote_date)}</span>
-              <span style="font-size:9.5px;color:var(--text-muted);">rate ${confidenceChip(it.rate_confidence)}</span>
-              <span style="font-size:9.5px;color:var(--text-muted);">venue ${confidenceChip(it.venue_confidence)}</span>
             </div>
           </div>
-          <div class="review-desc">${esc(it.description)}</div>
-          ${it.flag_reason ? `<div class="review-reason">${icon('alert', 'icon-sm')} ${esc(it.flag_reason)}</div>` : ''}
+          <div class="review-desc">${esc(it.description) || '<span style="color:var(--text-muted);font-style:italic;">(no description in the source file)</span>'}</div>
+          ${fixes ? `<ul class="review-reason">${fixes}</ul>` : ''}
           <div class="review-grid">
             <div>
-              <label class="field-label">Rate (AED)</label>
-              <input type="number" class="input num" id="rev-rate-${it.id}" value="${it.rate}" style="text-align:right;">
+              <label class="field-label">Rate (AED)${badExpr ? ' <span class="review-needs">needs fixing</span>' : ''}</label>
+              <input type="number" min="0" step="0.01" class="input num${badExpr ? ' input-flagged' : ''}" id="rev-rate-${it.id}" value="${it.rate}" style="text-align:right;">
             </div>
             <div>
               <label class="field-label">Unit</label>
               <input type="text" class="input" id="rev-unit-${it.id}" value="${esc(it.unit)}">
             </div>
             <div>
-              <label class="field-label">Venue</label>
-              <input type="text" class="input" id="rev-venue-${it.id}" value="${esc(it.venue)}">
+              <label class="field-label">Venue${badVenue ? ' <span class="review-needs">needs fixing</span>' : ''}</label>
+              <input type="text" class="input${badVenue ? ' input-flagged' : ''}" id="rev-venue-${it.id}"
+                     value="${esc(it.venue === 'Venue Unspecified' ? '' : it.venue)}" placeholder="e.g. Kite Beach">
             </div>
-            <button class="btn btn-ghost btn-sm" onclick="dismissReviewItem('${it.id}')" title="Leave as-is, stop flagging">${icon('close', 'icon-sm')} Dismiss</button>
-            <button class="btn btn-primary btn-sm" onclick="saveReviewCorrection('${it.id}')">${icon('check', 'icon-sm')} Approve</button>
+            <button class="btn btn-ghost btn-sm" onclick="dismissReviewItem('${it.id}')"
+                    title="Leave this item exactly as it is and stop flagging it. Nothing is deleted.">${icon('close', 'icon-sm')} Leave as-is</button>
+            <button class="btn btn-primary btn-sm" onclick="saveReviewCorrection('${it.id}')"
+                    title="Save what you typed above into the index. The fix survives future re-syncs.">${icon('check', 'icon-sm')} Save fix</button>
           </div>
         </div>`;
       cardIdx++;
@@ -1045,6 +1287,16 @@ function renderReviewQueue(items) {
     html += `</div>`;
   });
   container.innerHTML = html;
+}
+
+function openSourceFile(fileName) {
+  if (!api()) return;
+  showToast(`Opening ${fileName}...`, 'info', 2000);
+  api().open_source_file(fileName).then(function (res) {
+    if (!res.success) showToast(res.error || 'Could not open that file.', 'error', 7000);
+  }).catch(function (err) {
+    showToast('Could not open that file: ' + err, 'error', 7000);
+  });
 }
 
 function removeReviewCardFromDom(itemId) {

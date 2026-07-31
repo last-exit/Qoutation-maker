@@ -10,7 +10,11 @@ import base64
 import requests
 from PIL import Image as PILImage
 
-THUMB_SIZE = (250, 250)
+# Capture resolution for product photos. These are not just UI thumbnails — the same bytes
+# are embedded into the generated Word/Excel quotation, where 250px rendered at print size
+# looked visibly soft. 900px keeps ~300 DPI at a 3.4cm print width with room to spare.
+# Note: images already in the index were captured at the old size; re-sync to re-extract.
+THUMB_SIZE = (900, 900)
 _SEARCH_TIMEOUT = 4
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuotationEngine/1.0"}
 
@@ -26,7 +30,9 @@ def pil_to_base64(pil_img, fmt="PNG"):
 def bytes_to_thumbnail_base64(raw_bytes, size=THUMB_SIZE):
     pil_img = PILImage.open(io.BytesIO(raw_bytes))
     pil_img_copy = pil_img.convert("RGB") if pil_img.mode in ("P", "CMYK") else pil_img.copy()
-    pil_img_copy.thumbnail(size)
+    # LANCZOS over the default: these end up in a printed document, and the default filter
+    # leaves visible aliasing on product photos with fine detail (truss, mesh, lettering).
+    pil_img_copy.thumbnail(size, PILImage.LANCZOS)
     return pil_to_base64(pil_img_copy)
 
 

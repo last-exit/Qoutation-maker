@@ -1,0 +1,47 @@
+# --- Python environment / build artifacts -------------------------------------
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- Local data stores --------------------------------------------------------
+# chroma_db is a regenerable local index, not source: rebuild it any time with
+# "Sync & Build Index" in the app. It is excluded because chroma.sqlite3 grew past
+# 195 MB once photos were captured at full resolution, and GitHub hard-rejects any
+# single file over 100 MB. It also holds client pricing and product photos, which
+# do not belong in a shared repository.
+chroma_db/
+chroma_db_backup_*/
+
+# Quotation history and PM corrections contain real client records.
+history.db
+corrections.db
+corrections_backup_*.db
+
+# --- Generated output ---------------------------------------------------------
+# Quotations written by the app, named after real clients.
+*_Quotation_*.xlsx
+*_Quotation_*.docx
+*_Quotation_*.pdf
+scratch/
+
+# --- graphify local state -----------------------------------------------------
+# graph.json / GRAPH_REPORT.md are committed (CLAUDE.md points contributors at them).
+# These are machine-local: an AST cache that regenerates, absolute interpreter paths
+# that are meaningless on another machine, and dated rebuild snapshots.
+graphify-out/cache/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/20*/
+graphify-out/wiki/
+
+# --- Credentials --------------------------------------------------------------
+# Only credentials.json.template is tracked; the real file never is.
+credentials.json
+token.json
+
+# --- OS noise -----------------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
+~$*

@@ -29,6 +29,92 @@ PHOTO_COLLECTION_NAME = "photo_library"
 CROSSFILL_AUTO = 0.82
 CROSSFILL_SUGGEST = 0.70
 
+# --- Sync scope --------------------------------------------------------------------
+# The sync folder used to be the whole Drive, which meant every scan parsed the owner's
+# personal files (class notes, assignments, WhatsApp exports) alongside the job archive.
+# Measured against the live index: all 401 indexed items came from ALL THE QUOTATIONS,
+# while 120 documents in sibling folders parsed to zero items.
+#
+# Scope is set by pointing the app at the right folder — an explicit, visible choice — and
+# exclude_folders only removes directories that are definitively not document sources.
+# It deliberately does NOT filter on filename keywords: that was tried before and silently
+# dropped 12 real pricing files, so anything skipped here is reported back to the UI.
+SYNC_CONFIG_PATH = Path(__file__).resolve().parent / "sync_config.json"
+
+_DEFAULT_SYNC_CONFIG = {
+    "default_path": "G:\\My Drive\\BOOM TREE\\ALL THE QUOTATIONS",
+    "exclude_folders": [
+        "Google AI Studio", "Gemini Gems", "Colab Notebooks", "Opal", "Google Earth",
+        "Reports", "__pycache__", "venv", ".git", "node_modules",
+    ],
+}
+
+
+def _load_sync_config():
+    try:
+        if SYNC_CONFIG_PATH.exists():
+            with open(SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if data.get("default_path"):
+                return {**_DEFAULT_SYNC_CONFIG, **data}
+    except Exception as e:
+        print(f"Failed to load sync_config.json, using defaults: {e}")
+
+    try:
+        with open(SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(_DEFAULT_SYNC_CONFIG, f, indent=2)
+    except Exception as e:
+        print(f"Could not write sync_config.json: {e}")
+
+    return _DEFAULT_SYNC_CONFIG
+
+
+SYNC_CONFIG = _load_sync_config()
+
+
+def _elapsed_years(quote_date):
+    """Age of a historical quote in *fractional* years, for compounding the annual markup.
+
+    Previously this was a whole-year subtraction (current_year - quote_year), which made the
+    markup a no-op for anything quoted in the current calendar year — on the live index that
+    is 304 of 401 items, so three quarters of all matches displayed an "Adjusted" rate
+    identical to the original while the label still claimed a markup had been applied.
+
+    Measuring from the real date instead means a six-month-old quote earns roughly half the
+    annual uplift, and a quote from last week earns almost none — which is the intent.
+    """
+    if not quote_date:
+        return 0.0
+    text = str(quote_date).strip()[:10]
+    for fmt in ("%Y-%m-%d", "%Y-%m", "%Y"):
+        try:
+            parsed = datetime.strptime(text[:len(datetime.now().strftime(fmt))], fmt)
+            break
+        except ValueError:
+            continue
+    else:
+        return 0.0
+    # Future-dated quotes (clock skew, typo'd year) must not discount the rate.
+    return max(0.0, (datetime.now() - parsed).days / 365.25)
+
+
+def _distance_to_similarity(distance):
+    """Converts ChromaDB's squared-L2 distance into a real cosine similarity percentage.
+
+    The collections are created without an explicit `hnsw:space`, so Chroma uses squared L2,
+    and the embedding model returns unit vectors — for which  d^2 = 2 - 2*cos,  i.e.
+    cos = 1 - d/2 with d already squared.
+
+    The previous `1/(1+d)` never reached 0: a completely unrelated query still scored ~37%
+    and the scale bottomed out at 33%, so every match looked plausible. Ranking was
+    unaffected (both curves are monotonic in d) — only the number shown to the PM was wrong.
+    """
+    try:
+        cos = 1.0 - (float(distance) / 2.0)
+    except (TypeError, ValueError):
+        return 0.0
+    return round(max(0.0, min(1.0, cos)) * 100, 1)
+
 
 def crossfill_images(items, embeddings):
     """Fills in photos for items that have none by borrowing from the most similar item that
@@ -77,7 +163,7 @@ class QuotationApi:
         # product photos, keyed by description via the same semantic search as item matching.
         # Grows organically as PMs save photos while quoting, instead of needing a bulk upload.
         self.photo_collection = self.client.get_or_create_collection(name=PHOTO_COLLECTION_NAME)
-        self.sync_path = "G:\\My Drive"
+        self.sync_path = SYNC_CONFIG["default_path"]
 
     def _get_model(self):
         """Lazy loads sentence-transformers model to save initial window boot time."""
@@ -87,22 +173,6 @@ class QuotationApi:
         return self.model
 
     # --- Status / analytics -------------------------------------------------
-
-    def get_bundles(self):
-        """Returns the configured Quick Quote Bundles (common project packages).
-
-        Read from bundles.json on every call rather than cached at import, so a PM can edit
-        their package presets and see the change on the next app open without a code change.
-        """
-        try:
-            path = Path(__file__).resolve().parent / "bundles.json"
-            if not path.exists():
-                return {"success": True, "bundles": []}
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return {"success": True, "bundles": data.get("bundles", [])}
-        except Exception as e:
-            return {"success": False, "error": str(e), "bundles": []}
 
     def get_company_info(self):
         try:
@@ -186,16 +256,28 @@ class QuotationApi:
             # skipped 12 real pricing files in the live archive — including the two largest
             # image sources ("Maple Bear Equipment List", "Q01183 Cost To Build") — so hundreds
             # of embedded product photos never reached the app. The folder is the filter.
+            excluded = {name.lower() for name in SYNC_CONFIG.get("exclude_folders", [])}
             excel_files, pdf_files, word_files = [], [], []
+            skipped_folders = set()
+            skipped_count = 0
             for file in path_obj.rglob("*"):
                 if file.name.startswith("~$") or not file.is_file():
                     continue
                 suffix = file.suffix.lower()
+                if suffix not in (".xlsx", ".pdf", ".docx"):
+                    continue
+                # Only directory names are matched, never the file name itself.
+                parents = file.relative_to(path_obj).parts[:-1]
+                hit = next((p for p in parents if p.lower() in excluded), None)
+                if hit:
+                    skipped_folders.add(hit)
+                    skipped_count += 1
+                    continue
                 if suffix == ".xlsx":
                     excel_files.append(file)
                 elif suffix == ".pdf":
                     pdf_files.append(file)
-                elif suffix == ".docx":
+                else:
                     word_files.append(file)
 
             all_items = []
@@ -274,11 +356,19 @@ class QuotationApi:
             self.collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
 
             own = sum(1 for it in unique_items if it.get('image_base64') and not str(it.get('image_source', '')).startswith(('matched', 'suggested')))
+            message = (f"Indexing complete: {len(unique_items)} items indexed "
+                       f"({own} with their own photo, {crossfilled} matched from other quotes).")
+            # Anything not scanned is stated outright. Silently skipping files is exactly how
+            # the old filename filter lost 12 pricing documents without anyone noticing.
+            if skipped_count:
+                message += (f" Skipped {skipped_count} file(s) in excluded folder(s): "
+                            f"{', '.join(sorted(skipped_folders))} — edit sync_config.json to change this.")
             return {
                 "success": True,
                 "indexed_count": len(unique_items),
-                "message": f"Indexing complete: {len(unique_items)} items indexed "
-                           f"({own} with their own photo, {crossfilled} matched from other quotes)."
+                "skipped_count": skipped_count,
+                "skipped_folders": sorted(skipped_folders),
+                "message": message,
             }
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -304,19 +394,12 @@ class QuotationApi:
                 for idx in range(len(ids)):
                     metadata = metadatas[idx]
                     distance = distances[idx]
-                    similarity = 1.0 / (1.0 + distance)
+                    similarity_pct = _distance_to_similarity(distance)
 
                     rate = float(metadata.get('historical_rate', 0.0))
                     quote_date = metadata.get('quote_date', '')
 
-                    historical_year = current_year
-                    if quote_date:
-                        try:
-                            historical_year = int(quote_date.split('-')[0])
-                        except ValueError:
-                            pass
-
-                    elapsed_years = max(0, current_year - historical_year)
+                    elapsed_years = _elapsed_years(quote_date)
                     adjusted_rate = rate * ((1.0 + markup_rate_val) ** elapsed_years)
 
                     matches.append({
@@ -328,7 +411,7 @@ class QuotationApi:
                         'quote_date': quote_date,
                         'venue': metadata.get('venue', 'Venue Unspecified'),
                         'elapsed_years': elapsed_years,
-                        'similarity': round(similarity * 100, 1),
+                        'similarity': similarity_pct,
                         'file_name': metadata.get('file_name', ''),
                         'image_base64': metadata.get('image_base64', ''),
                         'image_source': metadata.get('image_source', ''),
@@ -536,6 +619,8 @@ class QuotationApi:
                     return Path(f"{base_filename}.{ext}")
 
             xlsx_path, docx_path, totals = None, None, None
+            # Reset before generating so the count reflects only this compile.
+            doc_generator.IMAGE_FAILURES.clear()
 
             if "xlsx" in formats:
                 company_name = doc_generator.COMPANY.get("name", "Company")
@@ -588,6 +673,7 @@ class QuotationApi:
             return {
                 "success": True,
                 "history_id": history_id,
+                "image_failures": len(doc_generator.IMAGE_FAILURES),
                 "xlsx_path": str(xlsx_path.resolve()) if xlsx_path else "",
                 "docx_path": str(docx_path.resolve()) if docx_path else "",
                 "pdf_path": pdf_path or "",
@@ -668,12 +754,11 @@ class QuotationApi:
                 for idx, photo_id in enumerate(results["ids"][0]):
                     metadata = results["metadatas"][0][idx]
                     distance = results["distances"][0][idx]
-                    similarity = round((1.0 / (1.0 + distance)) * 100, 1)
                     matches.append({
                         "id": photo_id,
                         "description": metadata.get("description", ""),
                         "image_base64": metadata.get("image_base64", ""),
-                        "similarity": similarity,
+                        "similarity": _distance_to_similarity(distance),
                     })
             return {"success": True, "matches": matches}
         except Exception as e:
@@ -703,6 +788,36 @@ class QuotationApi:
 
     def open_path(self, path):
         return pdf_export.open_file(path)
+
+    def open_source_file(self, file_name):
+        """Opens the original quote file a flagged item came from, so a PM can see the row
+        in context before deciding what the rate should be.
+
+        The index only stores the basename (parsing records `path_obj.name`), so the file is
+        located by searching the sync folder rather than trusted from the caller — and the
+        resolved hit is checked to be inside that folder, so a crafted name cannot walk out
+        of it and open something arbitrary.
+        """
+        try:
+            name = (file_name or "").strip()
+            if not name:
+                return {"success": False, "error": "No file recorded for this item."}
+
+            root = Path(self.sync_path).resolve()
+            if not root.exists():
+                return {"success": False, "error": f"Sync folder not found: {root}"}
+
+            match = next((p for p in root.rglob(Path(name).name) if p.is_file()), None)
+            if match is None:
+                return {"success": False, "error": f'"{name}" is no longer in {root}.'}
+
+            resolved = match.resolve()
+            if root not in resolved.parents:
+                return {"success": False, "error": "Refusing to open a file outside the sync folder."}
+
+            return pdf_export.open_file(str(resolved))
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
     # --- History -----------------------------------------------------------------
 

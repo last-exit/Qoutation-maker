@@ -17,10 +17,14 @@
   --border-strong: #c3bdab;
   --text-primary: #211f1c;  /* warm ink */
   --text-secondary: #57534a;
-  --text-muted: #8b8578;
+  /* Darkened from #8b8578, which measured 3.36:1 on panels and 3.13:1 on the app ground —
+     below the 4.5:1 floor on *every* field label, table header and empty state in the app.
+     This keeps the same warm hue and lands at 4.93:1 / 4.58:1. */
+  --text-muted: #6f6a60;
   --accent: #c8102e;        /* Cherry — the stamp */
   --accent-strong: #a50e26; /* deepens on press / hover in light */
   --accent-soft: rgba(200, 16, 46, 0.09);
+  --accent-select: rgba(200, 16, 46, 0.22);  /* selection needs real presence, not a 9% tint */
   --accent-border: rgba(200, 16, 46, 0.32);
   --success: #5c7a45;       /* moss — earthy so it never fights the cherry */
   --success-soft: rgba(92, 122, 69, 0.14);
@@ -63,10 +67,12 @@
   --border-strong: #4a473f;
   --text-primary: #efede3;  /* Paper text */
   --text-secondary: #b8b3a6;
-  --text-muted: #817c70;
+  /* Lifted from #817c70 (3.22:1) to clear 4.5:1 on the raised panel as well as the ground. */
+  --text-muted: #a19b8c;
   --accent: #e24a45;        /* Cherry lifts on dark so it still stamps */
   --accent-strong: #ef6f68;
   --accent-soft: rgba(226, 74, 69, 0.16);
+  --accent-select: rgba(226, 74, 69, 0.32);
   --accent-border: rgba(226, 74, 69, 0.40);
   --success: #93b072;
   --success-soft: rgba(147, 176, 114, 0.16);
@@ -93,11 +99,34 @@ html, body {
   font-family: var(--font);
   font-size: 13px;
   -webkit-font-smoothing: antialiased;
-  user-select: none;
+  /* Content text stays selectable so a PM can copy a rate, description or total out of
+     the app. Only click-chrome opts out below — dragging across a button or tab to
+     highlight its label is never intentional. */
+  user-select: text;
   overflow: hidden;
 }
 
 body { display: flex; flex-direction: row; }
+
+/* Click targets and decorative glyphs: selecting these is always accidental. */
+.seg, .btn, .icon-btn, .cmdk, kbd, .kbd-hint, .icon, .icon-sm, .icon-lg,
+.tab-count, .workspace-splitter { user-select: none; }
+
+::selection { background: var(--accent-select); color: var(--text-primary); }
+
+/* A faint warm wash on the ground so the paper reads as a surface rather than flat fill.
+   Pure CSS gradients — the app must run with zero network calls, so no image asset. */
+body {
+  background-image:
+    radial-gradient(ellipse 80% 55% at 12% 0%, var(--accent-soft), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 92% 100%, rgba(87, 83, 74, .05), transparent 62%);
+  background-attachment: fixed;
+}
+:root[data-theme="dark"] body {
+  background-image:
+    radial-gradient(ellipse 80% 55% at 12% 0%, rgba(226, 74, 69, .07), transparent 60%),
+    radial-gradient(ellipse 70% 50% at 92% 100%, rgba(239, 237, 227, .04), transparent 62%);
+}
 
 /* Figures (currency, quantities, dates) stay in the same sans face as everything else.
    Tabular figures keep digits on a fixed advance width so columns line up cleanly —
@@ -165,14 +194,14 @@ input[type="number"], td.num, th.num {
 .toast-close:hover { opacity: 1; }
 
 /* ---------- Status badges ---------- */
-.status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; border: 1px solid transparent; }
+.status-pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 800; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; border: 1px solid transparent; }
 .status-pill-sent { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-border); }
 .status-pill-won { background: var(--success-soft); color: var(--success); border-color: var(--success-soft); }
 .status-pill-lost { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-soft); }
 select.status-select { border: none; background: transparent; font: inherit; font-weight: 800; cursor: pointer; outline: none; }
 
 /* ---------- Keyboard shortcut hints ---------- */
-kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; padding: 1px 5px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 9.5px; font-family: var(--font); font-weight: 700; }
+kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; padding: 1px 5px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border-strong); color: var(--text-muted); font-size: 11px; font-family: var(--font); font-weight: 700; }
 
 /* ---------- App shell: icon+label sidebar (Zoho-style) + topbar ---------- */
 /* ---------- App shell: no sidebar. A floating glass command bar replaces it, with
@@ -212,7 +241,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 .seg .icon { width: 14px; height: 14px; }
 .seg.active { color: #fff; }
 .tab-count {
-  background: var(--warning); color: #1a1200; font-size: 8.5px; font-weight: 800;
+  background: var(--warning); color: #1a1200; font-size: 10px; font-weight: 800;
   padding: 1px 5px; border-radius: 999px; line-height: 1.5; margin-left: 2px;
 }
 .seg.active .tab-count { background: rgba(255,255,255,.28); color: #fff; }
@@ -220,11 +249,13 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 .cmd-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .cmdk {
   display: flex; align-items: center; gap: 8px; background: var(--bg-panel-alt); border: 1px solid var(--border);
-  border-radius: 999px; padding: 7px 12px 7px 14px; color: var(--text-muted); font-size: 11px; cursor: pointer;
+  /* Secondary rather than muted: this sits on the recessed command-bar fill, where muted
+     measured 4.42:1 — just under the 4.5 floor the rest of the app now clears. */
+  border-radius: 999px; padding: 7px 12px 7px 14px; color: var(--text-secondary); font-size: 11px; cursor: pointer;
 }
 .cmdk:hover { border-color: var(--border-strong); color: var(--text-secondary); }
 .cmdk kbd {
-  font-size: 9px; font-weight: 700; background: var(--bg-panel); border: 1px solid var(--border-strong);
+  font-size: 10.5px; font-weight: 700; background: var(--bg-panel); border: 1px solid var(--border-strong);
   border-radius: 4px; padding: 1px 5px; color: var(--text-secondary); font-family: var(--font);
 }
 
@@ -308,7 +339,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
   .home-columns { grid-template-columns: 1fr; }
 }
 .stat-icon { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.stat-label { font-size: 8.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.stat-label { font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .stat-value { font-size: 14px; font-weight: 700; letter-spacing: -.01em; }
 
 /* ---------- Main layout ---------- */
@@ -319,10 +350,77 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 /* Two columns now (Matcher + Compiler) — the third "Workspace Settings" column moved into
    a modal off the gear icon in the command bar, since sync/folder-path is a once-a-week
    action that no longer needs a permanent seat at the table. */
-.workspace { display: grid; grid-template-columns: 1.35fr 1fr; gap: 18px; height: 100%; }
-@media (max-width: 1080px) { .workspace { grid-template-columns: 1fr; } }
+/* The splitter column *is* the old 18px gutter (gap:0), so the resting layout is
+   unchanged — it just becomes a grab target. Ratio lives in --ws-left/--ws-right so a
+   window resize keeps the user's proportion instead of pinning one side to pixels. */
+.workspace {
+  display: grid;
+  grid-template-columns: var(--ws-left, 1.35fr) 18px var(--ws-right, 1fr);
+  gap: 0;
+  height: 100%;
+}
+@media (max-width: 1080px) {
+  .workspace { grid-template-columns: 1fr; gap: 18px; }
+  .workspace-splitter { display: none; }
+}
+
+.workspace-splitter { position: relative; cursor: col-resize; touch-action: none; }
+/* Grip sits faint at rest so the affordance is discoverable without adding visual noise. */
+.workspace-splitter::before {
+  content: '';
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px; height: 42px; border-radius: 2px;
+  background: var(--border-strong);
+  opacity: .45;
+  transition: opacity .15s ease, background .15s ease, height .15s ease;
+}
+.workspace-splitter:hover::before { opacity: 1; height: 72px; }
+.workspace-splitter:focus-visible { outline: none; }
+.workspace-splitter:focus-visible::before { opacity: 1; height: 72px; background: var(--accent); }
+.workspace.ws-dragging .workspace-splitter::before { opacity: 1; height: 100%; border-radius: 0; background: var(--accent); }
+/* Kill the panel width transition mid-drag or the panels lag a frame behind the cursor. */
+.workspace.ws-dragging .panel { transition: none; }
+body.ws-dragging { cursor: col-resize; user-select: none; }
 
 .panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-panel); display: flex; flex-direction: column; overflow: hidden; transition: width .22s ease, min-width .22s ease; }
+/* Named container so the compiler's inner grids respond to the splitter, not the viewport. */
+.panel-right { container: compiler / inline-size; }
+
+/* The compiler is the densest surface in the app — every row carries a description, a unit,
+   a qty, a rate and a thumbnail. Nudging its type down one step buys roughly an extra visible
+   row without touching the rest of the app's scale. */
+.panel-right { font-size: 12px; }
+.panel-right .field-label { font-size: 10px; }
+.panel-right .input, .panel-right .btn { font-size: 11px; }
+.panel-right .summary-box { font-size: 11px; }
+.panel-right .summary-line.total span:last-child { font-size: 21px; }
+.panel-right .draft-desc, .panel-right textarea.input { font-size: 11.5px; }
+
+/* Horizontal splitter: trades height between the item list and the pricing block. The footer
+   is height-driven rather than content-sized so the list can claim the difference. */
+.compiler-footer {
+  padding: 12px 15px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  height: var(--footer-h, auto);
+  overflow-y: auto;
+}
+.compiler-vsplit { position: relative; height: 12px; cursor: row-resize; flex-shrink: 0; touch-action: none; }
+.compiler-vsplit::before {
+  content: '';
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  height: 3px; width: 42px; border-radius: 2px;
+  background: var(--border-strong);
+  opacity: .45;
+  transition: opacity .15s ease, background .15s ease, width .15s ease;
+}
+.compiler-vsplit:hover::before { opacity: 1; width: 72px; }
+.compiler-vsplit:focus-visible { outline: none; }
+.compiler-vsplit:focus-visible::before { opacity: 1; width: 72px; background: var(--accent); }
+.panel-right.vsplit-dragging .compiler-vsplit::before { opacity: 1; width: 100%; border-radius: 0; background: var(--accent); }
+body.vsplit-dragging { cursor: row-resize; user-select: none; }
 .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
 .panel-title { display: flex; align-items: center; gap: 9px; font-family: var(--font-display); font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: -.005em; color: var(--text-primary); }
 .panel-title .icon { color: var(--accent); }
@@ -332,7 +430,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 .panel-right { min-width: 0; }
 
 /* ---------- Form elements ---------- */
-label.field-label { display: block; font-size: 9px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+label.field-label { display: block; font-size: 10.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
 .input, select.input, textarea.input {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
   border-radius: var(--radius-sm); padding: 9px 11px; font-size: 12px; font-family: var(--font); outline: none;
@@ -369,28 +467,14 @@ textarea.input { resize: none; line-height: 1.5; }
 .chip-muted { background: var(--bg-panel-alt); color: var(--text-secondary); border-color: var(--border); }
 .chip-warning { background: var(--warning-soft); color: var(--warning); border-color: var(--warning-soft); }
 .chip-danger { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-soft); }
+/* Chip that behaves as a button — opening the source document behind a match. */
+.chip-link {
+  background: var(--bg-input); color: var(--text-secondary); border: 1px solid var(--border);
+  cursor: pointer; font-family: var(--font); transition: background .15s, color .15s, border-color .15s;
+}
+.chip-link:hover { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent-border); }
 
 /* ---------- Review queue ---------- */
-/* ---------- Quick Quote Bundles ---------- */
-.bundles-section { margin-bottom: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; flex-shrink: 0; }
-.bundles-header { display: flex; align-items: center; justify-content: space-between; padding: 8px 11px; background: var(--bg-panel-alt); cursor: pointer; user-select: none; }
-.bundles-header:hover { background: var(--bg-hover); }
-.bundles-title { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
-.bundles-list { display: flex; flex-direction: column; gap: 6px; padding: 8px; max-height: 260px; overflow-y: auto; transition: max-height .22s var(--ease-out), padding .22s var(--ease-out); }
-.bundles-list.collapsed { max-height: 0; padding-top: 0; padding-bottom: 0; overflow: hidden; }
-.bundle-card {
-  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; cursor: pointer;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 8px 10px; font-family: var(--font); color: var(--text-primary);
-  transition: border-color .15s, background .15s, transform .1s var(--ease-out);
-}
-.bundle-card:hover { border-color: var(--accent-border); background: var(--accent-soft); transform: translateX(2px); }
-.bundle-icon { color: var(--accent-strong); display: flex; flex-shrink: 0; }
-.bundle-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.bundle-name { font-size: 11.5px; font-weight: 700; }
-.bundle-meta { font-size: 9.5px; color: var(--text-muted); }
-.bundle-add { color: var(--accent-strong); display: flex; flex-shrink: 0; }
-
 .review-file-group { margin-bottom: 22px; }
 .review-bulk-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--radius-sm); color: var(--accent-strong); }
 .review-bulk-row .input { flex: 1; }
@@ -404,7 +488,13 @@ textarea.input { resize: none; line-height: 1.5; }
 .review-card { background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 10px; }
 .review-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
 .review-desc { font-size: 11.5px; font-weight: 600; margin-bottom: 8px; }
-.review-reason { font-size: 10.5px; color: var(--text-muted); margin-bottom: 10px; font-style: italic; }
+/* Was one italic muted run-on of joined reasons; now one actionable instruction per line. */
+.review-reason { font-size: 11px; color: var(--text-secondary); margin: 0 0 10px; padding-left: 16px; }
+.review-reason li { margin-bottom: 3px; }
+/* Points at the box that actually needs typing in, instead of leaving all three identical. */
+.input-flagged { border-color: var(--danger); background: var(--danger-soft); }
+.input-flagged:focus { border-color: var(--danger); }
+.review-needs { color: var(--danger); font-weight: 700; text-transform: none; letter-spacing: 0; }
 .review-grid { display: grid; grid-template-columns: 1fr 1fr 1fr auto auto; gap: 8px; align-items: end; }
 
 /* ---------- Slider ---------- */
@@ -424,7 +514,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 /* Marks a photo borrowed from a similar item in another quote, so it's never mistaken for
    this exact line item's own picture. */
 .borrowed-badge {
-  position: absolute; bottom: 2px; right: 2px; font-size: 7.5px; font-weight: 800; letter-spacing: .04em;
+  position: absolute; bottom: 2px; right: 2px; font-size: 11px; font-weight: 800; letter-spacing: .04em;
   text-transform: uppercase; padding: 1px 4px; border-radius: 3px; pointer-events: none;
   background: var(--warning); color: #fff;
 }
@@ -432,16 +522,25 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .match-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
 .match-desc { font-size: 11.5px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .match-rates { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid var(--border); padding-top: 8px; font-weight: 600; }
-.rate-label { font-size: 8px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
+.rate-label { font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); padding: 40px 16px; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: 11.5px; }
 .empty-state .icon-lg { margin-bottom: 8px; color: var(--border-strong); }
+
+/* 4-up while the panel is wide; falls back to 2x2 once each field would get too narrow
+   to read its own value. Container queries keep this tied to the panel, not the window,
+   because the splitter can make this panel narrow at any window size. */
+.client-fields { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
+.field-optional { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-muted); }
+@container compiler (max-width: 560px) {
+  .client-fields { grid-template-columns: 1fr 1fr; }
+}
 
 .draft-item { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 13px; margin-bottom: 10px; box-shadow: var(--shadow-card); }
 .draft-item-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .draft-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-top: 8px; }
 .pct-row { display: flex; gap: 4px; margin-top: 6px; }
-.pct-btn { flex: 1; font-size: 9.5px; padding: 3px 0; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-secondary); cursor: pointer; }
+.pct-btn { flex: 1; font-size: 11px; padding: 3px 0; border-radius: 5px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-secondary); cursor: pointer; }
 .pct-btn:hover { border-color: var(--accent-border); color: var(--accent-strong); }
 .draft-thumb { position: relative; width: 44px; height: 44px; border-radius: 6px; background: var(--bg-input); border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; color: var(--text-muted); flex-shrink: 0; }
 .draft-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -471,7 +570,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .status-filter-chip.active { background: var(--accent); color: #ffffff; font-weight: 800; border-color: var(--accent); }
 .history-table-wrap { overflow: auto; height: calc(100% - 50px); border: 1px solid var(--border); border-radius: var(--radius-lg); }
 table.history-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-table.history-table th { position: sticky; top: 0; background: var(--bg-panel-alt); text-align: left; padding: 10px 12px; font-size: 9.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+table.history-table th { position: sticky; top: 0; background: var(--bg-panel-alt); text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 table.history-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; transition: background .15s var(--ease-out); }
 table.history-table tr:hover td { background: var(--bg-hover); }
 table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; }

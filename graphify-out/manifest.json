@@ -1,0 +1,127 @@
+{
+  ".claude/launch.json": {
+    "mtime": 1785455299.1912224,
+    "ast_hash": "cda04f6a11cb9762246ed6046ad8e57d",
+    "semantic_hash": "cda04f6a11cb9762246ed6046ad8e57d"
+  },
+  "app.js": {
+    "mtime": 1785492286.4897273,
+    "ast_hash": "119e32c7b7073ab71aca65b4f905406f",
+    "semantic_hash": ""
+  },
+  "app.py": {
+    "mtime": 1785510260.3002155,
+    "ast_hash": "6c30cb9edc8e4e6a3ca1f089e9f6219b",
+    "semantic_hash": ""
+  },
+  "bundles.json": {
+    "mtime": 1785455299.209099,
+    "ast_hash": "b6dd2f39e36ab8d8fa0682fccbf1c12e",
+    "semantic_hash": "b6dd2f39e36ab8d8fa0682fccbf1c12e"
+  },
+  "company.json": {
+    "mtime": 1785455300.5054018,
+    "ast_hash": "44c10383b1f24b82098608bc2916cb7b",
+    "semantic_hash": "44c10383b1f24b82098608bc2916cb7b"
+  },
+  "corrections_db.py": {
+    "mtime": 1785455300.5101438,
+    "ast_hash": "010fdafc03b256e1e1a8e6c3f1b0758e",
+    "semantic_hash": "010fdafc03b256e1e1a8e6c3f1b0758e"
+  },
+  "doc_generator.py": {
+    "mtime": 1785511846.9200487,
+    "ast_hash": "c6219f2f2be43f469cf569afbd6716ad",
+    "semantic_hash": ""
+  },
+  "history_db.py": {
+    "mtime": 1785455300.5188005,
+    "ast_hash": "e2d533eb3e0a7e1789498ccdf769a6ca",
+    "semantic_hash": "e2d533eb3e0a7e1789498ccdf769a6ca"
+  },
+  "image_tools.py": {
+    "mtime": 1785493329.3343873,
+    "ast_hash": "b32a6fb95e15abf9983f388ba857c025",
+    "semantic_hash": ""
+  },
+  "parsing.py": {
+    "mtime": 1785455300.5218246,
+    "ast_hash": "02e85f609e3fc924379cae731d40e1c3",
+    "semantic_hash": "02e85f609e3fc924379cae731d40e1c3"
+  },
+  "pdf_export.py": {
+    "mtime": 1785455300.5218246,
+    "ast_hash": "bd9bda5c66f2a0461e349c21eda252ef",
+    "semantic_hash": "bd9bda5c66f2a0461e349c21eda252ef"
+  },
+  "scratch/find_source.py": {
+    "mtime": 1785455300.5357046,
+    "ast_hash": "8089a59ec6e41d877f71cb79bfd9ee39",
+    "semantic_hash": "8089a59ec6e41d877f71cb79bfd9ee39"
+  },
+  "scratch/inspect_jungle.py": {
+    "mtime": 1785455300.538798,
+    "ast_hash": "eb1ad049650414250e22d280da724448",
+    "semantic_hash": "eb1ad049650414250e22d280da724448"
+  },
+  "scratch/inspect_pdf.py": {
+    "mtime": 1785455300.5401661,
+    "ast_hash": "b777ba57505f5dc8848936930f2574ca",
+    "semantic_hash": "b777ba57505f5dc8848936930f2574ca"
+  },
+  "sharing.py": {
+    "mtime": 1785455300.5401661,
+    "ast_hash": "afca653d4e30de0b8b3c5d3206c40b6f",
+    "semantic_hash": "afca653d4e30de0b8b3c5d3206c40b6f"
+  },
+  "terms.json": {
+    "mtime": 1785455300.542864,
+    "ast_hash": "d9d228911e7df79d1ad2cf1300ceea72",
+    "semantic_hash": "d9d228911e7df79d1ad2cf1300ceea72"
+  },
+  "venues.json": {
+    "mtime": 1785455300.5473113,
+    "ast_hash": "c4efb60c12948d792860ea8145f55475",
+    "semantic_hash": "c4efb60c12948d792860ea8145f55475"
+  },
+  "index.html": {
+    "mtime": 1785492013.0714645,
+    "ast_hash": "c469479b24373e2ce621c21e508d0dab",
+    "semantic_hash": ""
+  },
+  "requirements.txt": {
+    "mtime": 1785455300.5218246,
+    "ast_hash": "4e6ec547381d9db5ee3cd0e039ad0ea1",
+    "semantic_hash": "4e6ec547381d9db5ee3cd0e039ad0ea1"
+  },
+  "assets/red_cube_logo.png": {
+    "mtime": 1785455299.209099,
+    "ast_hash": "f39ea1f31fc629127f948769d0e0c490",
+    "semantic_hash": "f39ea1f31fc629127f948769d0e0c490"
+  },
+  ".claude/settings.json": {
+    "mtime": 1785457631.9432268,
+    "ast_hash": "435d0368ac2a1eafa179420cdb4f3bfb",
+    "semantic_hash": ""
+  },
+  "CLAUDE.md": {
+    "mtime": 1785457631.9368134,
+    "ast_hash": "8a6643a420fdad6bfb583523bc6cef16",
+    "semantic_hash": ""
+  },
+  ".impeccable/critique/2026-07-31T08-08-49Z__index-html.md": {
+    "mtime": 1785485329.0298414,
+    "ast_hash": "0f874d2acb5bec3bdf9207cce3f72131",
+    "semantic_hash": ""
+  },
+  "rashid ali_Quotation_20260731_1410.pdf": {
+    "mtime": 1785492615.5959413,
+    "ast_hash": "5613ccb2843a0018dd24f7114670b5ca",
+    "semantic_hash": ""
+  },
+  "sync_config.json": {
+    "mtime": 1785510310.9023223,
+    "ast_hash": "30ecc9a8bc60e371a99f40b6c817e4d3",
+    "semantic_hash": ""
+  }
+}
