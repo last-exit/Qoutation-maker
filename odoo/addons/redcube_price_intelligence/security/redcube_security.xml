@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <record id="module_category_price_intelligence" model="ir.module.category">
+            <field name="name">Price Intelligence</field>
+            <field name="description">Access to the historical quotation price archive.</field>
+            <field name="sequence">20</field>
+        </record>
+
+        <!--
+            Odoo 19 moved the access-rights grouping off res.groups: a group now points at a
+            res.groups.privilege, and the privilege carries the module category that renders
+            the dropdown on the user form.
+        -->
+        <record id="res_groups_privilege_price_archive" model="res.groups.privilege">
+            <field name="name">Price Archive</field>
+            <field name="sequence">20</field>
+            <field name="category_id" ref="module_category_price_intelligence"/>
+            <field name="description">Who can read and who can rewrite the historical price archive.</field>
+        </record>
+
+        <!--
+            Two levels rather than one. The archive holds every rate the company has ever
+            quoted, across every client — commercially the most sensitive data in the system.
+            Reading it to price a job and rewriting it are different privileges, even in a
+            single-user install where today they happen to be the same person.
+        -->
+        <record id="group_price_archive_user" model="res.groups">
+            <field name="name">Read</field>
+            <field name="sequence">10</field>
+            <field name="privilege_id" ref="res_groups_privilege_price_archive"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+            <field name="comment">Search the archive and pull historical rates into a quotation.</field>
+        </record>
+
+        <record id="group_price_archive_manager" model="res.groups">
+            <field name="name">Manage</field>
+            <field name="sequence">20</field>
+            <field name="privilege_id" ref="res_groups_privilege_price_archive"/>
+            <field name="implied_ids" eval="[(4, ref('group_price_archive_user'))]"/>
+            <field name="user_ids" eval="[(4, ref('base.user_admin'))]"/>
+            <field name="comment">Re-index the archive, correct parsed rates, and clear review flags.</field>
+        </record>
+
+    </data>
+</odoo>

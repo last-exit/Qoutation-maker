@@ -37,7 +37,9 @@ logs/
 
 # The exported ONNX embedding model (~91 MB), produced by tools/export_onnx.py.
 # Regenerate rather than commit: GitHub warns past 50 MB and it is derived, not source.
-models/
+# Anchored to the repo root — an unanchored `models/` also matches every Odoo addon's
+# models/ package, which silently dropped the addon source from the first commit.
+/models/
 
 # --- Generated output ---------------------------------------------------------
 # Quotations written by the app, named after real clients.
@@ -55,6 +57,14 @@ graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/20*/
 graphify-out/wiki/
+
+# --- Odoo deployment ----------------------------------------------------------
+# Real credentials and the generated config that embeds the master password.
+# The .example files next to them are tracked.
+odoo/.env
+odoo/config/odoo.conf
+# Filestore/attachment dumps taken for local restores.
+odoo/backups/
 
 # --- Credentials --------------------------------------------------------------
 # Only credentials.json.template is tracked; the real file never is.

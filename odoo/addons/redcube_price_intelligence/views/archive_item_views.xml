@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_archive_item_list" model="ir.ui.view">
+        <field name="name">redcube.archive.item.list</field>
+        <field name="model">redcube.archive.item</field>
+        <field name="arch" type="xml">
+            <list string="Price Archive" default_order="quote_date desc">
+                <field name="title"/>
+                <field name="rate" widget="monetary"/>
+                <field name="currency_id" column_invisible="1"/>
+                <field name="uom_label"/>
+                <field name="quote_date"/>
+                <field name="venue"/>
+                <field name="source_name" optional="show"/>
+                <!-- Surfaced in the list because a low-confidence rate looks exactly like a
+                     trustworthy one once it is sitting in a quotation. -->
+                <field name="rate_confidence" optional="show"
+                       decoration-warning="rate_confidence == 'low'"/>
+                <field name="needs_review" widget="boolean_toggle" optional="show"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_archive_item_form" model="ir.ui.view">
+        <field name="name">redcube.archive.item.form</field>
+        <field name="model">redcube.archive.item</field>
+        <field name="arch" type="xml">
+            <form string="Archive Item">
+                <header>
+                    <button name="action_view_source" type="object" string="Open Source Document"
+                            class="btn-secondary" invisible="not source_id"/>
+                </header>
+                <sheet>
+                    <field name="image" widget="image" class="oe_avatar"/>
+                    <div class="oe_title">
+                        <h1><field name="title" readonly="1" placeholder="Title"/></h1>
+                    </div>
+                    <group>
+                        <group string="Commercials">
+                            <field name="rate" widget="monetary"/>
+                            <field name="currency_id" groups="base.group_multi_currency"/>
+                            <field name="uom_label"/>
+                        </group>
+                        <group string="Provenance">
+                            <field name="quote_date"/>
+                            <field name="venue"/>
+                            <field name="source_id"/>
+                        </group>
+                    </group>
+                    <group string="Extraction Confidence">
+                        <group>
+                            <field name="rate_confidence"/>
+                            <field name="venue_confidence"/>
+                        </group>
+                        <group>
+                            <field name="needs_review"/>
+                            <field name="flag_reason" readonly="1"/>
+                            <!-- Named honestly: a borrowed photo shows a different job's
+                                 structure, and passing it off as this line's own is how a
+                                 client ends up expecting the wrong thing. -->
+                            <field name="image_origin" readonly="1"
+                                   invisible="not image_origin"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Full Description">
+                            <field name="name" nolabel="1"/>
+                        </page>
+                        <page string="Technical" groups="base.group_no_one">
+                            <group>
+                                <field name="content_hash" readonly="1"/>
+                                <field name="image_hash" readonly="1"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_archive_item_search" model="ir.ui.view">
+        <field name="name">redcube.archive.item.search</field>
+        <field name="model">redcube.archive.item</field>
+        <field name="arch" type="xml">
+            <search string="Search Price Archive">
+                <field name="name" string="Description"
+                       filter_domain="['|', ('name', 'ilike', self), ('title', 'ilike', self)]"/>
+                <field name="venue"/>
+                <field name="source_name"/>
+                <separator/>
+                <filter name="needs_review" string="Needs Review" domain="[('needs_review', '=', True)]"/>
+                <filter name="has_photo" string="Has Photo" domain="[('image_hash', '!=', False)]"/>
+                <filter name="low_confidence" string="Low Rate Confidence"
+                        domain="[('rate_confidence', '=', 'low')]"/>
+                <separator/>
+                <filter name="last_year" string="Quoted Last 12 Months"
+                        domain="[('quote_date', '&gt;=', (context_today() - relativedelta(months=12)).strftime('%Y-%m-%d'))]"/>
+                <!-- Group-by filters sit directly in the search element. Odoo 19's search view
+                     schema no longer accepts the <group expand="0"> wrapper that used to hold
+                     them. -->
+                <separator/>
+                <filter name="group_venue" string="Venue" context="{'group_by': 'venue'}"/>
+                <filter name="group_source" string="Source Document" context="{'group_by': 'source_name'}"/>
+                <filter name="group_date" string="Quote Date" context="{'group_by': 'quote_date:month'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_archive_item" model="ir.actions.act_window">
+        <field name="name">Price Archive</field>
+        <field name="res_model">redcube.archive.item</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_archive_item_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Your price archive is empty</p>
+            <p>Index a folder of past quotations to build it. Every line item that has ever
+               been quoted becomes searchable by meaning, so you can price a new job from what
+               comparable work actually sold for.</p>
+        </field>
+    </record>
+
+    <record id="action_archive_review_queue" model="ir.actions.act_window">
+        <field name="name">Needs Review</field>
+        <field name="res_model">redcube.archive.item</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('needs_review', '=', True)]</field>
+        <field name="search_view_id" ref="view_archive_item_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">Nothing to review</p>
+            <p>Items land here when the parser could not read a rate confidently, or could not
+               tell which venue a document belonged to. Correcting one here is remembered, so
+               the next re-index will not flag it again.</p>
+        </field>
+    </record>
+
+</odoo>
