@@ -26,6 +26,8 @@ from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ALIGN_VERTICAL
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
+import image_store
+
 NAVY_HEX = "1F497D"  # kept as a fallback constant; live styling now reads from COMPANY below
 
 # --- Company branding config -------------------------------------------------------
@@ -181,16 +183,21 @@ def split_name_and_spec(description):
 IMAGE_FAILURES = []
 
 
-def decode_image_payload(image_base64):
-    """Decodes a stored image field to raw bytes, tolerating a bare base64 string.
+def load_image_bytes(value):
+    """Resolves a line item's image field to raw bytes.
 
-    Values normally arrive as a `data:image/png;base64,...` URI, but anything written
-    without that prefix used to raise IndexError on split(",")[1] and lose the photo.
+    Accepts a content-addressed ref (the current form) or a legacy inline
+    `data:image/png;base64,...` URI, so re-opening a quotation saved before the image store
+    existed still renders its photos. Returns None when the field is empty or the referenced
+    file has gone missing, which callers already treat as "no image on this row".
     """
-    if not image_base64:
-        return None
-    payload = image_base64.split(",", 1)[1] if "," in image_base64 else image_base64
-    return base64.b64decode(payload)
+    return image_store.resolve_bytes(value)
+
+
+def item_image(item):
+    """The image field of a line item, preferring the ref and falling back to legacy inline
+    data so old history records and freshly parsed items both work through one path."""
+    return item.get('image_ref') or item.get('image_base64') or ""
 
 
 def _prepare_thumbnail(img_bytes, box=THUMB_BOX, pad=True):
@@ -227,7 +234,10 @@ def _prepare_thumbnail(img_bytes, box=THUMB_BOX, pad=True):
         out_img.thumbnail((box, box), PILImage.LANCZOS)
 
     stream = io.BytesIO()
-    out_img.save(stream, format="PNG")
+    # JPEG, not PNG: these are photographs, and PNG made every generated .xlsx/.docx several
+    # times larger for no visible gain at print size. Quality 90 because this is the copy the
+    # client actually receives.
+    out_img.save(stream, format="JPEG", quality=90, optimize=True)
     stream.seek(0)
     return stream
 
@@ -530,7 +540,7 @@ def generate_excel_dynamic(items, meta, template_path, output_path):
     # nowhere to go in the generated sheet and was silently dropped. Append a trailing Image
     # column rather than inserting one mid-sheet, so none of the existing column letters used
     # by the meta rows above (Date/Venue/Valid Until/Prepared By) shift and break.
-    if not img_col and any(item.get('image_base64') for item in items):
+    if not img_col and any(item_image(item) for item in items):
         img_col = max(col_map.values()) + 1
         img_col_letter = get_column_letter(img_col)
         header_cell = ws.cell(row=header_row, column=img_col, value="Image")
@@ -588,13 +598,13 @@ def generate_excel_dynamic(items, meta, template_path, output_path):
         wrapped = sum(max(1, (len(ln) // col_chars) + 1) for ln in spec_lines)
         # The name is bold and a shade larger, so it wraps sooner than the spec text does.
         name_wrapped = max(1, (len(name) // max(12, int(col_chars * 0.85))) + 1)
-        has_image = bool(item.get('image_base64') and img_col)
+        has_image = bool(item_image(item) and img_col)
         row_height = _row_height_for(has_image, wrapped, name_wrapped)
 
         row_has_image = False
         if has_image:
             try:
-                img_bytes = decode_image_payload(item['image_base64'])
+                img_bytes = load_image_bytes(item_image(item))
                 # Rendered at DOC_IMAGE_PX but displayed at THUMB_BOX: Excel keeps the full
                 # resolution in the file, so zooming or printing stays sharp.
                 tmp_stream = _prepare_thumbnail(img_bytes, DOC_IMAGE_PX)
@@ -1039,9 +1049,9 @@ def generate_word_dynamic(items, meta, output_path):
             r.font.color.rgb = muted_rgb
         spec_cell.vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
-        if item.get('image_base64'):
+        if item_image(item):
             try:
-                img_bytes = decode_image_payload(item['image_base64'])
+                img_bytes = load_image_bytes(item_image(item))
                 thumb_stream = _prepare_thumbnail(img_bytes, DOC_IMAGE_PX, pad=False)
                 cells[IMAGE_COL].text = ""
                 pic_para = cells[IMAGE_COL].paragraphs[0]

@@ -1,43 +1,32 @@
-"""Image helpers: embedded-image thumbnailing, best-effort online image search, URL/file encoding.
+"""Image helpers: embedded-image extraction, best-effort online image search, URL/file import.
+
+Every function that produces a photo now returns a content-addressed ref from `image_store`
+rather than a base64 data URI. The bytes land on disk exactly once; databases and API
+responses carry a 64-character hash. See image_store's docstring for why.
 
 Every network-touching function here fails soft (returns success: False) so the core
 offline workflow never breaks if there is no internet connection.
 """
 import io
 import re
-import base64
 
 import requests
-from PIL import Image as PILImage
 
-# Capture resolution for product photos. These are not just UI thumbnails — the same bytes
-# are embedded into the generated Word/Excel quotation, where 250px rendered at print size
-# looked visibly soft. 900px keeps ~300 DPI at a 3.4cm print width with room to spare.
-# Note: images already in the index were captured at the old size; re-sync to re-extract.
-THUMB_SIZE = (900, 900)
+import image_store
+
 _SEARCH_TIMEOUT = 4
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuotationEngine/1.0"}
 
 
-def pil_to_base64(pil_img, fmt="PNG"):
-    buffered = io.BytesIO()
-    pil_img.save(buffered, format=fmt)
-    img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-    mime = "image/png" if fmt.upper() == "PNG" else "image/jpeg"
-    return f"data:{mime};base64,{img_str}"
+def _result_for(ref):
+    """Uniform shape for the JS API: a ref for storage, a URL for rendering."""
+    if not ref:
+        return {"success": False, "error": "Could not read that image."}
+    return {"success": True, "image_ref": ref, "image_src": image_store.web_src(ref)}
 
 
-def bytes_to_thumbnail_base64(raw_bytes, size=THUMB_SIZE):
-    pil_img = PILImage.open(io.BytesIO(raw_bytes))
-    pil_img_copy = pil_img.convert("RGB") if pil_img.mode in ("P", "CMYK") else pil_img.copy()
-    # LANCZOS over the default: these end up in a printed document, and the default filter
-    # leaves visible aliasing on product photos with fine detail (truss, mesh, lettering).
-    pil_img_copy.thumbnail(size, PILImage.LANCZOS)
-    return pil_to_base64(pil_img_copy)
-
-
-def get_embedded_image_base64(img):
-    """Extracts image data from an openpyxl drawing image, resizes, and encodes to base64."""
+def store_embedded_image(img):
+    """Extracts image data from an openpyxl drawing and stores it. Returns a ref or ""."""
     try:
         raw_data = None
 
@@ -60,28 +49,33 @@ def get_embedded_image_base64(img):
                 pass
 
         if raw_data:
-            return bytes_to_thumbnail_base64(raw_data)
+            return image_store.store_bytes(raw_data) or ""
     except Exception as e:
         print(f"Error extracting embedded image: {e}")
     return ""
 
 
-def fetch_image_as_base64(url, timeout=6):
-    """Downloads an arbitrary image URL, resizes, and returns a base64 data URI. Best-effort."""
+def store_raw_bytes(raw_bytes):
+    """Stores bytes pulled straight out of a document part (docx/pdf). Returns a ref or ""."""
+    return image_store.store_bytes(raw_bytes) or ""
+
+
+def fetch_image_from_url(url, timeout=6):
+    """Downloads an arbitrary image URL and stores it. Best-effort."""
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=timeout)
         resp.raise_for_status()
-        return {"success": True, "image_base64": bytes_to_thumbnail_base64(resp.content)}
+        return _result_for(image_store.store_bytes(resp.content))
     except Exception as e:
         return {"success": False, "error": str(e)}
 
 
-def bytes_from_local_file(file_path):
-    """Reads and thumbnails a locally uploaded image file. Fully offline."""
+def import_local_file(file_path):
+    """Reads a locally uploaded image file into the store. Fully offline."""
     try:
         with open(file_path, "rb") as f:
             raw = f.read()
-        return {"success": True, "image_base64": bytes_to_thumbnail_base64(raw)}
+        return _result_for(image_store.store_bytes(raw))
     except Exception as e:
         return {"success": False, "error": str(e)}
 

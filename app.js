@@ -56,6 +56,8 @@ let lastCompileResult = null;
 let historyCache = [];
 let lastMatches = [];
 let lastLibraryMatches = [];
+let catalogCache = [];
+let editingCatalogItemId = null;
 
 function api() { return (window.pywebview && window.pywebview.api) ? window.pywebview.api : null; }
 function uid() { return Date.now() + '_' + Math.random().toString(36).slice(2); }
@@ -93,7 +95,8 @@ function showToast(message, type, duration) {
 
   const el = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.innerHTML = `${icon(TOAST_ICONS[type] || 'sparkles', 'icon toast-icon')}<div class="toast-msg">${esc(message)}</div><span class="toast-close">${icon('close', 'icon-sm')}</span>`;
+  el.setAttribute('role', 'status');
+  el.innerHTML = `${icon(TOAST_ICONS[type] || 'sparkles', 'icon toast-icon')}<div class="toast-msg">${esc(message)}</div><button type="button" class="toast-close" aria-label="Dismiss">${icon('close', 'icon-sm')}</button>`;
   container.appendChild(el);
 
   const dismiss = () => {
@@ -102,8 +105,11 @@ function showToast(message, type, duration) {
     setTimeout(() => el.remove(), 260);
   };
   el.querySelector('.toast-close').addEventListener('click', dismiss);
-  const timer = setTimeout(dismiss, duration);
+  // Hovering to read a longer message used to only ever pause the clock — moving the
+  // mouse away left it paused forever, so the toast would sit there until manually closed.
+  let timer = setTimeout(dismiss, duration);
   el.addEventListener('mouseenter', () => clearTimeout(timer));
+  el.addEventListener('mouseleave', () => { timer = setTimeout(dismiss, duration); });
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +123,8 @@ document.addEventListener('keydown', function (e) {
     if (document.getElementById('image-picker-overlay').classList.contains('open')) closeImagePicker();
     else if (document.getElementById('success-modal-overlay').classList.contains('open')) closeSuccessModal();
     else if (document.getElementById('settings-modal-overlay').classList.contains('open')) closeSettingsModal();
+    else if (document.getElementById('catalog-item-modal-overlay').classList.contains('open')) closeCatalogItemModal();
+    else if (document.getElementById('client-ledger-modal-overlay').classList.contains('open')) closeClientLedgerModal();
     return;
   }
 
@@ -152,6 +160,7 @@ initTheme();
 hydrateIcons();
 renderDraft();
 positionActiveTabPill();
+initTabsKeyboardNav();
 initWorkspaceSplitter();
 initCompilerVSplit();
 
@@ -163,6 +172,24 @@ function bootBackend() {
   updateAnalyticsDashboard();
   applyCompanyBranding();
   loadHomeDashboard();
+  refreshCatalogCache();
+}
+
+// Warms catalogCache in the background so the Compiler's "Est. Margin" line has cost data
+// to look up without making the PM wait — margin is a nice-to-know, not blocking.
+function refreshCatalogCache() {
+  if (!api()) return;
+  api().get_catalog_items().then(function (res) {
+    if (res.success) catalogCache = res.items;
+  }).catch(function () { /* non-critical */ });
+}
+
+function loadMarginStat() {
+  const el = document.getElementById('stat-margin-month');
+  if (!el || !api()) return;
+  api().get_margin_summary(30).then(function (res) {
+    if (res.success) el.innerText = money(res.summary.total_margin) + ' AED';
+  }).catch(function () { /* non-critical */ });
 }
 
 function applyCompanyBranding() {
@@ -193,6 +220,7 @@ function applyCompanyBranding() {
 function loadHomeDashboard() {
   updateAnalyticsDashboard();
   loadHomeRecent();
+  loadMarginStat();
 }
 
 function loadHomeRecent() {
@@ -209,7 +237,7 @@ function loadHomeRecent() {
     container.innerHTML = res.items.map(function (q, idx) {
       const pillClass = q.status === 'Won' ? 'status-pill-won' : (q.status === 'Lost' ? 'status-pill-lost' : 'status-pill-sent');
       return `
-        <div class="home-recent-item anim-in" style="animation-delay:${idx * 40}ms;" onclick="cloneHistoryItem(${q.id})">
+        <button type="button" class="home-recent-item anim-in" style="animation-delay:${idx * 40}ms;" onclick="cloneHistoryItem(${q.id})">
           <div style="min-width:0;">
             <div class="home-recent-client">${esc(q.client_name)}</div>
             <div class="home-recent-meta">${icon('pin', 'icon-sm')} ${esc(q.venue || '-')} &middot; ${esc(q.quote_date)}</div>
@@ -218,7 +246,7 @@ function loadHomeRecent() {
             <div class="home-recent-total">${money(q.grand_total)} AED</div>
             <span class="status-pill ${pillClass}" style="margin-top:3px;">${esc(q.status || 'Sent')}</span>
           </div>
-        </div>`;
+        </button>`;
     }).join('');
   }).catch(function () {
     container.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>Could not load recent quotations.</span></div>`;
@@ -425,7 +453,7 @@ function initCompilerVSplit() {
   }
 }
 
-const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', review: 'Needs Review', history: 'Quotation History' };
+const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', catalog: 'Item Catalog', review: 'Needs Review', history: 'Quotation History' };
 // Home has its own hero; Review/History already carry a panel title. Only Compiler
 // gets the shared page-head, since it's the one view that never had a headline.
 const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
@@ -433,11 +461,15 @@ const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
 function switchTab(tab) {
   document.getElementById('view-home').classList.toggle('hidden', tab !== 'home');
   document.getElementById('view-compiler').classList.toggle('hidden', tab !== 'compiler');
+  document.getElementById('view-catalog').classList.toggle('hidden', tab !== 'catalog');
   document.getElementById('view-history').classList.toggle('hidden', tab !== 'history');
   document.getElementById('view-review').classList.toggle('hidden', tab !== 'review');
 
   document.querySelectorAll('.seg').forEach(function (s) {
-    s.classList.toggle('active', s.getAttribute('data-tab') === tab);
+    const isActive = s.getAttribute('data-tab') === tab;
+    s.classList.toggle('active', isActive);
+    s.setAttribute('aria-selected', String(isActive));
+    s.tabIndex = isActive ? 0 : -1;
   });
   positionActiveTabPill();
 
@@ -451,6 +483,7 @@ function switchTab(tab) {
   }
 
   if (tab === 'home') loadHomeDashboard();
+  if (tab === 'catalog') loadCatalog();
   if (tab === 'history') loadHistory();
   if (tab === 'review') loadReviewQueue();
 }
@@ -467,6 +500,28 @@ function positionActiveTabPill() {
 }
 window.addEventListener('resize', positionActiveTabPill);
 
+// Arrow-key traversal for the tablist, per the standard ARIA tabs pattern: Left/Right move
+// focus and activate the neighboring tab (Home/End jump to the first/last).
+function initTabsKeyboardNav() {
+  const wrap = document.getElementById('segwrap');
+  if (!wrap) return;
+  wrap.addEventListener('keydown', function (e) {
+    const tabs = Array.from(wrap.querySelectorAll('.seg'));
+    const currentIndex = tabs.indexOf(document.activeElement);
+    if (currentIndex === -1) return;
+    let nextIndex = null;
+    if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') nextIndex = 0;
+    else if (e.key === 'End') nextIndex = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    const next = tabs[nextIndex];
+    next.focus();
+    switchTab(next.getAttribute('data-tab'));
+  });
+}
+
 function goToNewQuotation() {
   switchTab('compiler');
   setTimeout(() => { const el = document.getElementById('search-input'); if (el) el.focus(); }, 50);
@@ -477,8 +532,54 @@ function goToSync() {
   setTimeout(() => { const el = document.getElementById('folder-path-input'); if (el) el.focus(); }, 50);
 }
 
-function openSettingsModal() { document.getElementById('settings-modal-overlay').classList.add('open'); }
-function closeSettingsModal() { document.getElementById('settings-modal-overlay').classList.remove('open'); }
+// ---------------------------------------------------------------------------
+// Modal focus management — a closed modal used to leave its inputs keyboard-focusable
+// (only opacity/pointer-events changed, not visibility), so Tab could reach a hidden
+// "Sync & Build Index" button and Enter would fire it. Now that CSS gates visibility too,
+// pair every open with a focus trap and every close with focus restored to whatever
+// triggered it.
+let _lastFocusedBeforeModal = null;
+
+function trapFocus(overlayEl) {
+  const focusable = overlayEl.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  function handler(e) {
+    if (e.key !== 'Tab') return;
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  }
+  overlayEl._focusTrapHandler = handler;
+  overlayEl.addEventListener('keydown', handler);
+  first.focus();
+}
+
+function releaseFocusTrap(overlayEl) {
+  if (overlayEl._focusTrapHandler) {
+    overlayEl.removeEventListener('keydown', overlayEl._focusTrapHandler);
+    overlayEl._focusTrapHandler = null;
+  }
+  if (_lastFocusedBeforeModal && document.body.contains(_lastFocusedBeforeModal)) {
+    _lastFocusedBeforeModal.focus();
+  }
+  _lastFocusedBeforeModal = null;
+}
+
+function openModal(overlayEl) {
+  _lastFocusedBeforeModal = document.activeElement;
+  overlayEl.classList.add('open');
+  // visibility just flipped from hidden this frame — give the browser a tick before
+  // querying/focusing descendants.
+  setTimeout(() => trapFocus(overlayEl), 0);
+}
+function closeModal(overlayEl) {
+  overlayEl.classList.remove('open');
+  releaseFocusTrap(overlayEl);
+}
+
+function openSettingsModal() { openModal(document.getElementById('settings-modal-overlay')); }
+function closeSettingsModal() { closeModal(document.getElementById('settings-modal-overlay')); }
 
 // ---------------------------------------------------------------------------
 // Status / analytics
@@ -503,7 +604,6 @@ function updateAnalyticsDashboard() {
   api().get_analytics().then(function (d) {
     document.getElementById('stat-total-items').innerText = d.total_items;
     document.getElementById('stat-avg-price').innerText = d.avg_price + ' AED';
-    document.getElementById('stat-max-price').innerText = d.max_price + ' AED';
     document.getElementById('stat-year-range').innerText = `${d.year_min} - ${d.year_max}`;
     document.getElementById('stat-venues').innerText = d.venues;
     document.getElementById('stat-needs-review').innerText = d.needs_review || 0;
@@ -632,11 +732,13 @@ function renderMatches(matches) {
   let html = '';
   matches.forEach(function (m, idx) {
     const borrowed = isBorrowedPhoto(m.image_source);
-    const imageHtml = m.image_base64
-      ? `<img src="${m.image_base64}"/>${borrowed ? `<span class="borrowed-badge" title="${esc(m.image_source)}">ref</span>` : ''}`
+    const imageHtml = m.image_src
+      ? `<img src="${esc(m.image_src)}" loading="lazy"/>${borrowed ? `<span class="borrowed-badge" title="${esc(m.image_source)}">ref</span>` : ''}`
       : icon('image', 'icon-lg');
     html += `
-      <div class="match-card anim-in" style="animation-delay:${idx * 45}ms;" onclick='addMatchedItemToDraft(${JSON.stringify(m).replace(/'/g, '&apos;')})'>
+      <div class="match-card anim-in" style="animation-delay:${idx * 45}ms;" role="button" tabindex="0"
+           onclick='addMatchedItemToDraft(${JSON.stringify(m).replace(/'/g, '&apos;')})'
+           onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}">
         <div class="match-thumb" id="match-thumb-${m.id}">${imageHtml}</div>
         <div style="flex:1;min-width:0;">
           <div class="match-meta-row">
@@ -652,7 +754,7 @@ function renderMatches(matches) {
               <div><div class="rate-label">Original</div><div>${money(m.original_rate)} AED</div></div>
               ${upliftHtml(m)}
             </div>
-            <div style="font-size:9.5px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:4px;">Add to draft ${icon('arrowRight', 'icon-sm')}</div>
+            <div style="font-size:10px;font-weight:700;color:var(--accent);display:flex;align-items:center;gap:4px;">Add to draft ${icon('arrowRight', 'icon-sm')}</div>
           </div>
         </div>
       </div>`;
@@ -661,16 +763,18 @@ function renderMatches(matches) {
 }
 
 function addMatchedItemToDraft(item) {
+  const rate = item.adjusted_rate || item.original_rate;
   draftItems.push({
     id: uid(), description: item.description, unit: item.unit || 'Pcs', qty: 1,
-    rate: item.adjusted_rate || item.original_rate, image_base64: item.image_base64 || '',
+    rate: rate, baseRate: rate, pctAdjust: 0,
+    image_ref: item.image_ref || '', image_src: item.image_src || '',
     image_source: item.image_source || '',
   });
   renderDraft();
 }
 
 function addCustomDraftRow() {
-  draftItems.push({ id: uid(), description: 'Custom Event Production Item', unit: 'Pcs', qty: 1, rate: 0, image_base64: '', image_source: '' });
+  draftItems.push({ id: uid(), description: 'Custom Event Production Item', unit: 'Pcs', qty: 1, rate: 0, baseRate: 0, pctAdjust: 0, image_ref: '', image_src: '', image_source: '' });
   renderDraft();
 }
 
@@ -693,22 +797,22 @@ function renderDraft() {
   compileBtn.disabled = false;
   let html = '';
   draftItems.forEach(function (item, idx) {
-    const thumb = item.image_base64
-      ? `<img src="${item.image_base64}"/>${isBorrowedPhoto(item.image_source) ? `<span class="borrowed-badge" title="${esc(item.image_source)}">ref</span>` : ''}`
+    const thumb = item.image_src
+      ? `<img src="${esc(item.image_src)}" loading="lazy"/>${isBorrowedPhoto(item.image_source) ? `<span class="borrowed-badge" title="${esc(item.image_source)}">ref</span>` : ''}`
       : icon('image', 'icon');
     const unitOptionsHtml = UNIT_OPTIONS.map(u => `<option value="${u}" ${item.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     html += `
       <div class="draft-item anim-in" style="animation-delay:${idx * 40}ms;">
         <div class="draft-item-head">
-          <span style="font-size:9.5px;color:var(--text-muted);font-weight:700;">ITEM #${idx + 1}</span>
+          <span style="font-size:10px;color:var(--text-muted);font-weight:700;">ITEM #${idx + 1}</span>
           <div style="display:flex;gap:10px;">
-            ${item.image_base64 ? `<span class="icon-btn" style="width:26px;height:26px;cursor:pointer;color:var(--accent-strong);" onclick="saveDraftImageToLibrary('${item.id}')" title="Save this photo to the reusable library">${icon('sparkles', 'icon-sm')}</span>` : ''}
-            <span class="icon-btn" style="width:26px;height:26px;cursor:pointer;" onclick="openImagePicker('${item.id}')" title="Set image">${icon('image', 'icon-sm')}</span>
-            <span class="icon-btn" style="width:26px;height:26px;cursor:pointer;color:var(--danger);" onclick="deleteDraftItem('${item.id}')" title="Remove">${icon('trash', 'icon-sm')}</span>
+            ${item.image_ref ? `<button type="button" class="icon-btn" style="width:26px;height:26px;color:var(--accent-strong);" onclick="saveDraftImageToLibrary('${item.id}')" title="Save this photo to the reusable library">${icon('sparkles', 'icon-sm')}</button>` : ''}
+            <button type="button" class="icon-btn" style="width:26px;height:26px;" onclick="openImagePicker('${item.id}')" title="Set image">${icon('image', 'icon-sm')}</button>
+            <button type="button" class="icon-btn" style="width:26px;height:26px;color:var(--danger);" onclick="deleteDraftItem('${item.id}')" title="Remove">${icon('trash', 'icon-sm')}</button>
           </div>
         </div>
         <div style="display:flex;gap:8px;">
-          <div class="draft-thumb" id="draft-thumb-${item.id}" onclick="openImagePicker('${item.id}')">${thumb}</div>
+          <button type="button" class="draft-thumb" id="draft-thumb-${item.id}" onclick="openImagePicker('${item.id}')" aria-label="Set image">${thumb}</button>
           <textarea rows="2" class="input" style="flex:1;" oninput="updateDraftValue('${item.id}','description',this.value)">${esc(item.description)}</textarea>
         </div>
         <div class="draft-grid">
@@ -730,9 +834,10 @@ function renderDraft() {
           <button class="pct-btn" onclick="adjustRate('${item.id}',0.10)">+10%</button>
           <button class="pct-btn" onclick="adjustRate('${item.id}',-0.05)">-5%</button>
           <button class="pct-btn" onclick="adjustRate('${item.id}',-0.10)">-10%</button>
+          <button class="pct-btn" onclick="resetRate('${item.id}')" title="Reset to ${money(item.baseRate != null ? item.baseRate : item.rate)} AED">Reset</button>
         </div>
         <div class="num" style="text-align:right;margin-top:6px;font-size:11px;color:var(--text-secondary);">
-          Subtotal: <b class="num-strong" style="color:var(--text-primary);">${money(item.qty * item.rate)} AED</b>
+          Subtotal: <b class="num-strong draft-subtotal" style="color:var(--text-primary);">${money(item.qty * item.rate)} AED</b>
         </div>
       </div>`;
   });
@@ -748,14 +853,41 @@ function updateDraftValue(id, key, val) {
   // below zero on a quotation; clamp at the source rather than trying to catch it later.
   if ((key === 'qty' || key === 'rate') && (!isFinite(val) || val < 0)) val = 0;
   item[key] = val;
+  // A manually typed rate is a new reference point, not a nudge — rebase so the +/-% buttons
+  // work off what the PM just typed instead of silently snapping back toward the old value.
+  if (key === 'rate') { item.baseRate = val; item.pctAdjust = 0; }
   if (key === 'qty' || key === 'rate') updateSummary();
 }
 
+// pct is a percentage OFF THE ORIGINAL RATE, not a repeated multiply-in-place — +10% then
+// -10% now returns exactly to baseRate instead of landing 1% short from compounding on an
+// already-adjusted number. Patches just this row's DOM instead of calling renderDraft(),
+// which used to rebuild the whole list and move focus to <body> on every click.
 function adjustRate(id, pct) {
   const item = draftItems.find(i => i.id === id);
   if (!item) return;
-  item.rate = Math.round(item.rate * (1 + pct) * 100) / 100;
-  renderDraft();
+  if (typeof item.baseRate !== 'number') item.baseRate = item.rate;
+  if (typeof item.pctAdjust !== 'number') item.pctAdjust = 0;
+  item.pctAdjust = Math.round((item.pctAdjust + pct) * 10000) / 10000;
+  item.rate = Math.round(item.baseRate * (1 + item.pctAdjust) * 100) / 100;
+  patchDraftRowRate(item);
+}
+
+function resetRate(id) {
+  const item = draftItems.find(i => i.id === id);
+  if (!item) return;
+  item.pctAdjust = 0;
+  item.rate = typeof item.baseRate === 'number' ? item.baseRate : item.rate;
+  patchDraftRowRate(item);
+}
+
+function patchDraftRowRate(item) {
+  const input = document.getElementById('rate-input-' + item.id);
+  if (input) input.value = item.rate;
+  const row = input && input.closest('.draft-item');
+  const subtotalEl = row && row.querySelector('.draft-subtotal');
+  if (subtotalEl) subtotalEl.innerText = money(item.qty * item.rate) + ' AED';
+  updateSummary();
 }
 
 function deleteDraftItem(id) {
@@ -772,9 +904,34 @@ function onDiscountValueChange(val) {
   updateSummary();
 }
 
+// Exact normalized-text match against the catalog cache, same rule as catalog_db's
+// find_catalog_item_by_description on the backend — a description that isn't in the
+// catalog just means no margin data for that line, not an error.
+function findCatalogCost(description) {
+  const key = (description || '').trim().toLowerCase();
+  if (!key) return null;
+  const match = catalogCache.find(c => (c.description || '').trim().toLowerCase() === key);
+  return (match && match.cost_price != null) ? Number(match.cost_price) : null;
+}
+
 function updateSummary() {
   let subtotal = 0;
-  draftItems.forEach(i => { subtotal += (Number(i.qty) || 0) * (Number(i.rate) || 0); });
+  let costTotal = 0;
+  let itemsWithCost = 0;
+  draftItems.forEach(i => {
+    const qty = Number(i.qty) || 0;
+    subtotal += qty * (Number(i.rate) || 0);
+    const cost = findCatalogCost(i.description);
+    if (cost != null) { costTotal += qty * cost; itemsWithCost++; }
+  });
+
+  const marginRow = document.getElementById('summary-margin-row');
+  if (itemsWithCost > 0) {
+    marginRow.classList.remove('hidden');
+    document.getElementById('summary-margin').innerText = money(subtotal - costTotal) + ' AED';
+  } else {
+    marginRow.classList.add('hidden');
+  }
 
   let discountAmount = 0;
   if (discountType === 'percent') discountAmount = subtotal * (discountValue / 100);
@@ -803,20 +960,23 @@ function updateSummary() {
 function openImagePicker(itemId) {
   currentImagePickerItemId = itemId;
   const item = draftItems.find(i => i.id === itemId);
-  document.getElementById('image-picker-overlay').classList.add('open');
   document.getElementById('image-url-input').value = '';
   document.getElementById('image-search-results').innerHTML = '';
   document.getElementById('image-search-query').value = (item ? item.description.split('\n')[0] : '').slice(0, 60);
   switchImagePickerTab('library');
+  openModal(document.getElementById('image-picker-overlay'));
 }
 function closeImagePicker() {
-  document.getElementById('image-picker-overlay').classList.remove('open');
+  closeModal(document.getElementById('image-picker-overlay'));
   currentImagePickerItemId = null;
 }
 function switchImagePickerTab(tab) {
   ['library', 'search', 'url', 'upload'].forEach(t => {
-    document.getElementById('img-tab-' + t).classList.toggle('active', t === tab);
-    document.getElementById('img-panel-' + t).classList.toggle('hidden', t !== tab);
+    const isActive = t === tab;
+    const tabEl = document.getElementById('img-tab-' + t);
+    tabEl.classList.toggle('active', isActive);
+    tabEl.setAttribute('aria-selected', String(isActive));
+    document.getElementById('img-panel-' + t).classList.toggle('hidden', !isActive);
   });
   if (tab === 'library') runLibrarySearch();
 }
@@ -838,13 +998,13 @@ function runLibrarySearch() {
       results.innerHTML = `<div class="empty-state" style="padding:16px;">${icon('sparkles', 'icon-lg')}<p>Nothing saved yet for something like this.</p><p style="margin-top:4px;">Set a real photo below, then save it here for next time.</p></div>`;
       return;
     }
-    // Hold the matches and reference them by index: inlining each data URI into an onclick
-    // attribute duplicated every thumbnail's full base64 payload into the HTML string.
+    // Held by index and referenced from the handler rather than serialized into it — the
+    // src is now a short URL, but the description still has no business inside an attribute.
     lastLibraryMatches = res.matches;
     results.innerHTML = `<div class="image-grid">${res.matches.map((m, i) => `
       <div style="position:relative;">
-        <img src="${esc(m.image_base64)}" onclick="applyLibraryMatch(${i})" title="${esc(m.description)}"/>
-        <span class="chip chip-accent" style="position:absolute;bottom:4px;left:4px;font-size:8.5px;padding:1px 6px;">${m.similarity}%</span>
+        <img src="${esc(m.image_src)}" loading="lazy" onclick="applyLibraryMatch(${i})" title="${esc(m.description)}"/>
+        <span class="chip chip-accent" style="position:absolute;bottom:4px;left:4px;font-size:10px;padding:1px 6px;">${m.similarity}%</span>
       </div>`).join('')}</div>`;
   }).catch(function (err) {
     results.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(err)}</span></div>`;
@@ -853,14 +1013,14 @@ function runLibrarySearch() {
 
 function applyLibraryMatch(idx) {
   const m = lastLibraryMatches[idx];
-  if (m) applyImageToItem(m.image_base64);
+  if (m) applyImageToItem(m.image_ref, m.image_src);
 }
 
 function saveDraftImageToLibrary(itemId) {
   if (!api()) return;
   const item = draftItems.find(i => i.id === itemId);
-  if (!item || !item.image_base64) return;
-  api().save_photo_to_library(item.description, item.image_base64).then(function (res) {
+  if (!item || !item.image_ref) return;
+  api().save_photo_to_library(item.description, item.image_ref).then(function (res) {
     if (res.success) showToast('Saved to your photo library for next time.', 'success');
     else showToast('Could not save to library: ' + res.error, 'error');
   }).catch(function (err) {
@@ -893,7 +1053,7 @@ function selectSuggestedImage(sourceUrl) {
   if (!api()) return;
   const targetId = currentImagePickerItemId;
   api().fetch_image_from_url(sourceUrl).then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64, '', targetId);
+    if (res.success) applyImageToItem(res.image_ref, res.image_src, '', targetId);
     else showToast('Could not fetch that image: ' + res.error, 'error');
   });
 }
@@ -902,7 +1062,7 @@ function pasteImageUrl() {
   if (!url || !api()) return;
   const targetId = currentImagePickerItemId;
   api().fetch_image_from_url(url).then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64, '', targetId);
+    if (res.success) applyImageToItem(res.image_ref, res.image_src, '', targetId);
     else showToast('Could not fetch that image: ' + res.error, 'error');
   });
 }
@@ -910,18 +1070,19 @@ function uploadImageForItem() {
   if (!api()) return;
   const targetId = currentImagePickerItemId;
   api().upload_image_dialog().then(function (res) {
-    if (res.success) applyImageToItem(res.image_base64, '', targetId);
+    if (res.success) applyImageToItem(res.image_ref, res.image_src, '', targetId);
     else if (res.error !== 'No file selected.') showToast('Upload failed: ' + res.error, 'error');
   });
 }
 // targetId pins the image to the row the picker was opened for. Fetches are async, so
 // without it a slow download lands on whichever row is selected when it finally resolves —
 // or is dropped entirely if the picker was closed in the meantime.
-function applyImageToItem(base64, source, targetId) {
+function applyImageToItem(ref, src, source, targetId) {
   const id = targetId || currentImagePickerItemId;
   const item = draftItems.find(i => i.id === id);
   if (item) {
-    item.image_base64 = base64;
+    item.image_ref = ref || '';
+    item.image_src = src || '';
     item.image_source = source || '';
     renderDraft();
   }
@@ -979,7 +1140,7 @@ function compileQuote() {
   if (formats.length === 0) formats.push('xlsx');
 
   const payload = {
-    items: draftItems.map(i => ({ description: i.description, unit: i.unit, qty: i.qty, rate: i.rate, image_base64: i.image_base64 })),
+    items: draftItems.map(i => ({ description: i.description, unit: i.unit, qty: i.qty, rate: i.rate, image_ref: i.image_ref })),
     client_name: document.getElementById('client-name-input').value.trim() || 'Client',
     client_phone: document.getElementById('client-phone-input').value.trim(),
     venue: document.getElementById('client-venue-input').value.trim(),
@@ -1038,18 +1199,18 @@ function showSuccessModal(res, payload) {
       <div class="check-pop" style="width:40px;height:40px;border-radius:50%;background:var(--success-soft);color:var(--success);display:flex;align-items:center;justify-content:center;margin:0 auto 10px;">${icon('check', 'icon-lg')}</div>
       <div style="font-size:22px;font-weight:800;color:var(--accent-strong);">${money(res.totals.grand_total)} AED</div>
       <div style="font-size:11px;color:var(--text-muted);">Grand Total &middot; Quotation Ref Q-${res.history_id}</div>
-      <div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">${icon('clock', 'icon-sm')} Valid until ${esc(res.valid_until || '')}</div>
+      <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">${icon('clock', 'icon-sm')} Valid until ${esc(res.valid_until || '')}</div>
     </div>
     ${filesHtml}
     <div class="share-btn-row">
-      <div class="share-btn" onclick="shareViaWhatsapp()">${icon('chat', 'icon-lg')}<span>WhatsApp</span></div>
-      <div class="share-btn" onclick="shareViaEmail()">${icon('mail', 'icon-lg')}<span>Email</span></div>
-      <div class="share-btn" onclick="reopenPdf()">${icon('link', 'icon-lg')}<span>Open File</span></div>
+      <button type="button" class="share-btn" onclick="shareViaWhatsapp()">${icon('chat', 'icon-lg')}<span>WhatsApp</span></button>
+      <button type="button" class="share-btn" onclick="shareViaEmail()">${icon('mail', 'icon-lg')}<span>Email</span></button>
+      <button type="button" class="share-btn" onclick="reopenPdf()">${icon('link', 'icon-lg')}<span>Open File</span></button>
     </div>
   `;
-  document.getElementById('success-modal-overlay').classList.add('open');
+  openModal(document.getElementById('success-modal-overlay'));
 }
-function closeSuccessModal() { document.getElementById('success-modal-overlay').classList.remove('open'); }
+function closeSuccessModal() { closeModal(document.getElementById('success-modal-overlay')); }
 function shareViaWhatsapp() { if (lastCompileResult && api()) api().open_external_link(lastCompileResult.whatsapp_link); }
 function shareViaEmail() { if (lastCompileResult && api()) api().open_external_link(lastCompileResult.mailto_link); }
 function reopenPdf() {
@@ -1062,7 +1223,7 @@ function reopenPdf() {
 // History tab
 // ---------------------------------------------------------------------------
 let historyStatusFilter = '';
-const HISTORY_COLSPAN = 9;
+const HISTORY_COLSPAN = 10;
 
 function loadHistory() {
   const container = document.getElementById('history-table-body');
@@ -1101,6 +1262,42 @@ function statusPillHtml(id, status) {
   return `<span class="status-pill ${pillClass}"><select class="status-select" onchange="updateQuoteStatus(${id}, this.value)">${options}</select></span>`;
 }
 
+// A quote only becomes an invoice once it's Won — payment fields would be meaningless
+// (and misleading) to show while it's still just Sent or has been marked Lost.
+function paymentCellHtml(q) {
+  if ((q.status || 'Sent') !== 'Won') return `<span style="color:var(--text-muted);">-</span>`;
+  const paymentStatus = q.payment_status || 'Unpaid';
+  const amountPaid = Number(q.amount_paid) || 0;
+  const balance = Math.max(0, (Number(q.grand_total) || 0) - amountPaid);
+  const options = ['Unpaid', 'Partial', 'Paid'].map(s => `<option value="${s}" ${s === paymentStatus ? 'selected' : ''}>${s}</option>`).join('');
+  const pillClass = paymentStatus === 'Paid' ? 'status-pill-won' : (paymentStatus === 'Partial' ? 'status-pill-sent' : 'status-pill-lost');
+  return `
+    <div style="display:flex;flex-direction:column;gap:3px;min-width:126px;">
+      <span class="status-pill ${pillClass}"><select class="status-select" onchange="updatePayment(${q.id}, this.value, null)">${options}</select></span>
+      <div style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text-muted);">
+        Paid <input type="number" min="0" step="0.01" class="input" style="width:64px;padding:2px 5px;font-size:10px;" value="${amountPaid}" onchange="updatePayment(${q.id}, null, parseFloat(this.value)||0)">
+      </div>
+      <div class="num" style="font-size:10px;color:${balance > 0 ? 'var(--danger)' : 'var(--success)'};">Bal: ${money(balance)} AED</div>
+    </div>`;
+}
+
+function updatePayment(id, status, amount) {
+  if (!api()) return;
+  const item = historyCache.find(h => h.id === id);
+  if (!item) return;
+  const finalStatus = status != null ? status : (item.payment_status || 'Unpaid');
+  const finalAmount = amount != null ? amount : (Number(item.amount_paid) || 0);
+  api().update_payment(id, finalStatus, finalAmount).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not update payment.', 'error'); return; }
+    item.payment_status = finalStatus;
+    item.amount_paid = finalAmount;
+    renderHistoryTable(applyHistoryFilters(historyCache));
+    showToast(`Payment updated for #${id}.`, 'success');
+  }).catch(function (err) {
+    showToast('Error updating payment: ' + err, 'error');
+  });
+}
+
 function renderHistoryTable(items) {
   const container = document.getElementById('history-table-body');
   if (items.length === 0) {
@@ -1111,13 +1308,14 @@ function renderHistoryTable(items) {
     return `
       <tr style="animation-delay:${Math.min(idx * 30, 300)}ms;">
         <td>#${q.id}</td>
-        <td>${esc(q.client_name)}</td>
+        <td><button type="button" class="client-link" onclick="openClientLedgerForQuote(${q.id})" title="View this client's full history">${esc(q.client_name)}</button></td>
         <td><span class="chip chip-muted">${icon('pin', 'icon-sm')} ${esc(q.venue || '-')}</span></td>
         <td>${esc(q.quote_date)}</td>
         <td>${esc(q.valid_until || '-')}</td>
         <td>${q.items.length}</td>
         <td class="num num-strong">${money(q.grand_total)} AED</td>
         <td>${statusPillHtml(q.id, q.status)}</td>
+        <td>${paymentCellHtml(q)}</td>
         <td>
           <div style="display:flex;gap:6px;">
             <button class="btn btn-ghost btn-sm" onclick="cloneHistoryItem(${q.id})">${icon('edit', 'icon-sm')} Clone / Edit</button>
@@ -1145,7 +1343,7 @@ function cloneHistoryItem(id) {
   api().get_history_item(id).then(function (res) {
     if (!res.success) { showToast(res.error, 'error'); return; }
     const q = res.item;
-    draftItems = (q.items || []).map(it => ({ id: uid(), description: it.description, unit: it.unit || 'Pcs', qty: it.qty || 1, rate: it.rate || 0, image_base64: it.image_base64 || '' }));
+    draftItems = (q.items || []).map(it => ({ id: uid(), description: it.description, unit: it.unit || 'Pcs', qty: it.qty || 1, rate: it.rate || 0, baseRate: it.rate || 0, pctAdjust: 0, image_ref: it.image_ref || '', image_src: it.image_src || '' }));
     document.getElementById('client-name-input').value = q.client_name || '';
     document.getElementById('client-phone-input').value = q.client_phone || '';
     document.getElementById('client-venue-input').value = q.venue || '';
@@ -1169,6 +1367,177 @@ function deleteHistoryItem(id) {
 
 function filterHistory() {
   renderHistoryTable(applyHistoryFilters(historyCache));
+}
+
+// ---------------------------------------------------------------------------
+// Client ledger — derived from quotations grouped by client, no standalone clients table.
+// ---------------------------------------------------------------------------
+function openClientLedgerForQuote(quoteId) {
+  const q = historyCache.find(h => h.id === quoteId);
+  if (!q) return;
+  openClientLedger(q.client_name, q.client_phone);
+}
+
+function openClientLedger(clientName, clientPhone) {
+  if (!api()) { showToast('Backend connection missing.', 'error'); return; }
+  document.getElementById('client-ledger-modal-title').innerText = clientName || 'Client Ledger';
+  const body = document.getElementById('client-ledger-modal-body');
+  body.innerHTML = skeletonCards(2);
+  openModal(document.getElementById('client-ledger-modal-overlay'));
+  api().get_client_ledger(clientName, clientPhone).then(function (res) {
+    if (!res.success) { body.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(res.error)}</span></div>`; return; }
+    renderClientLedger(res.ledger);
+  }).catch(function (err) {
+    body.innerHTML = `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(err)}</span></div>`;
+  });
+}
+
+function renderClientLedger(ledger) {
+  const body = document.getElementById('client-ledger-modal-body');
+  const summary = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+      <div class="stat-card"><div><div class="stat-label">Total Billed</div><div class="stat-value">${money(ledger.total_billed)} AED</div></div></div>
+      <div class="stat-card"><div><div class="stat-label">Total Paid</div><div class="stat-value">${money(ledger.total_paid)} AED</div></div></div>
+      <div class="stat-card"><div><div class="stat-label">Outstanding</div><div class="stat-value" style="color:${ledger.total_outstanding > 0 ? 'var(--danger)' : 'var(--success)'};">${money(ledger.total_outstanding)} AED</div></div></div>
+    </div>`;
+  if (ledger.items.length === 0) {
+    body.innerHTML = summary + `<div class="empty-state">${icon('history', 'icon-lg')}<p>No quotations for this client yet.</p></div>`;
+    return;
+  }
+  const rows = ledger.items.map(function (q) {
+    const pillClass = q.status === 'Won' ? 'status-pill-won' : (q.status === 'Lost' ? 'status-pill-lost' : 'status-pill-sent');
+    return `
+      <tr>
+        <td>#${q.id}</td>
+        <td>${esc(q.quote_date)}</td>
+        <td><span class="chip chip-muted">${icon('pin', 'icon-sm')} ${esc(q.venue || '-')}</span></td>
+        <td class="num">${money(q.grand_total)} AED</td>
+        <td><span class="status-pill ${pillClass}">${esc(q.status || 'Sent')}</span></td>
+        <td class="num">${q.status === 'Won' ? money(q.amount_paid || 0) + ' AED' : '-'}</td>
+      </tr>`;
+  }).join('');
+  body.innerHTML = summary + `
+    <div class="history-table-wrap" style="max-height:320px;">
+      <table class="history-table">
+        <thead><tr><th>Ref</th><th>Date</th><th>Venue</th><th>Total</th><th>Status</th><th>Paid</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function closeClientLedgerModal() { closeModal(document.getElementById('client-ledger-modal-overlay')); }
+
+// ---------------------------------------------------------------------------
+// Item Catalog — a persistent, PM-editable item list, independent of the historical
+// index that gets destructively rebuilt on every sync. This is the only place a cost_price
+// lives, which is what makes margin reporting (see compileQuote) possible at all.
+// ---------------------------------------------------------------------------
+const CATALOG_COLSPAN = 7;
+
+function loadCatalog() {
+  const container = document.getElementById('catalog-table-body');
+  if (!api()) { container.innerHTML = `<tr><td colspan="${CATALOG_COLSPAN}">Connect the backend to see the catalog.</td></tr>`; return; }
+  container.innerHTML = Array(3).fill(
+    `<tr><td colspan="${CATALOG_COLSPAN}"><div class="skeleton skeleton-line" style="width:100%;height:16px;"></div></td></tr>`
+  ).join('');
+  api().get_catalog_items().then(function (res) {
+    if (!res.success) { container.innerHTML = `<tr><td colspan="${CATALOG_COLSPAN}">${esc(res.error)}</td></tr>`; return; }
+    catalogCache = res.items;
+    renderCatalogTable(applyCatalogFilter(catalogCache));
+  });
+}
+
+function applyCatalogFilter(items) {
+  const q = document.getElementById('catalog-search').value.trim().toLowerCase();
+  if (!q) return items;
+  return items.filter(i =>
+    (i.description || '').toLowerCase().includes(q) || (i.category || '').toLowerCase().includes(q));
+}
+
+function filterCatalog() {
+  renderCatalogTable(applyCatalogFilter(catalogCache));
+}
+
+function renderCatalogTable(items) {
+  const container = document.getElementById('catalog-table-body');
+  if (items.length === 0) {
+    container.innerHTML = `<tr><td colspan="${CATALOG_COLSPAN}"><div class="empty-state">${icon('database', 'icon-lg')}<p>No catalog items yet.</p><p style="margin-top:4px;">Add your first item to start tracking cost and margin.</p></div></td></tr>`;
+    return;
+  }
+  container.innerHTML = items.map(function (it, idx) {
+    const hasCost = it.cost_price != null && it.cost_price !== '';
+    const margin = hasCost ? (Number(it.rate) || 0) - Number(it.cost_price) : null;
+    return `
+      <tr style="animation-delay:${Math.min(idx * 30, 300)}ms;">
+        <td>${esc(it.description)}</td>
+        <td>${it.category ? `<span class="chip chip-muted">${esc(it.category)}</span>` : '-'}</td>
+        <td>${esc(it.unit)}</td>
+        <td class="num">${money(it.rate)} AED</td>
+        <td class="num">${hasCost ? money(it.cost_price) + ' AED' : '-'}</td>
+        <td class="num" style="color:${margin != null && margin < 0 ? 'var(--danger)' : 'var(--success)'};">${margin != null ? money(margin) + ' AED' : '-'}</td>
+        <td>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="openCatalogItemModal(${it.id})">${icon('edit', 'icon-sm')} Edit</button>
+            <button class="btn btn-danger-ghost btn-sm" onclick="deleteCatalogItem(${it.id})">${icon('trash', 'icon-sm')}</button>
+          </div>
+        </td>
+      </tr>`;
+  }).join('');
+}
+
+function openCatalogItemModal(itemId) {
+  editingCatalogItemId = itemId || null;
+  const item = itemId ? catalogCache.find(i => i.id === itemId) : null;
+  document.getElementById('catalog-item-modal-title').innerText = item ? 'Edit Catalog Item' : 'Add Catalog Item';
+  document.getElementById('catalog-desc-input').value = item ? item.description : '';
+  document.getElementById('catalog-category-input').value = item ? (item.category || '') : '';
+  document.getElementById('catalog-unit-input').value = item ? item.unit : 'Pcs';
+  document.getElementById('catalog-rate-input').value = item ? item.rate : 0;
+  document.getElementById('catalog-cost-input').value = item && item.cost_price != null ? item.cost_price : '';
+  openModal(document.getElementById('catalog-item-modal-overlay'));
+}
+function closeCatalogItemModal() {
+  closeModal(document.getElementById('catalog-item-modal-overlay'));
+  editingCatalogItemId = null;
+}
+
+function saveCatalogItem() {
+  if (!api()) { showToast('Backend connection missing.', 'error'); return; }
+  const description = document.getElementById('catalog-desc-input').value.trim();
+  if (!description) { showToast('Description is required.', 'warning'); return; }
+
+  const payload = {
+    id: editingCatalogItemId,
+    description: description,
+    category: document.getElementById('catalog-category-input').value.trim() || null,
+    unit: document.getElementById('catalog-unit-input').value.trim() || 'Pcs',
+    rate: parseFloat(document.getElementById('catalog-rate-input').value) || 0,
+    cost_price: document.getElementById('catalog-cost-input').value.trim() === ''
+      ? null : parseFloat(document.getElementById('catalog-cost-input').value) || 0,
+  };
+
+  const saveBtn = document.getElementById('catalog-save-btn');
+  saveBtn.disabled = true;
+  api().save_catalog_item(payload).then(function (res) {
+    saveBtn.disabled = false;
+    if (!res.success) { showToast(res.error || 'Could not save item.', 'error'); return; }
+    showToast(editingCatalogItemId ? 'Catalog item updated.' : 'Catalog item added.', 'success');
+    closeCatalogItemModal();
+    loadCatalog();
+  }).catch(function (err) {
+    saveBtn.disabled = false;
+    showToast('Error saving catalog item: ' + err, 'error');
+  });
+}
+
+function deleteCatalogItem(id) {
+  if (!confirm('Delete this catalog item? This does not affect any quotations already generated.')) return;
+  if (!api()) return;
+  api().delete_catalog_item(id).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not delete item.', 'error'); return; }
+    showToast('Catalog item removed.', 'info');
+    loadCatalog();
+  });
 }
 
 // ---------------------------------------------------------------------------

@@ -1,12 +1,35 @@
-google-api-python-client
-google-auth-oauthlib
-google-auth-httplib2
-openpyxl
-pymupdf
-chromadb
-sentence-transformers
-datefinder
-Pillow
-requests
-python-docx
-pywin32
+# Runtime dependencies, pinned.
+#
+# Versions were unpinned, and run.sh reinstalls from this file on every launch — so the app
+# silently changed behaviour between runs and could not start without a network connection.
+# Pin, and let a human decide when to move.
+#
+# Embeddings run on onnxruntime against models/all-MiniLM-L6-v2 (see embedder.py), which is
+# why torch, transformers and sentence-transformers are absent: they accounted for ~400 MB of
+# a 1.0 GB virtualenv and were only ever loading a 90 MB model. Regenerate the ONNX model with
+# `python tools/export_onnx.py` (needs the dev extras below).
+#
+# google-api-python-client and its auth packages were also removed — 99 MB, imported nowhere.
+
+# --- UI shell ---------------------------------------------------------------------
+pywebview==6.2.1
+pyobjc-core==11.1; sys_platform == 'darwin'
+pyobjc-framework-Cocoa==11.1; sys_platform == 'darwin'
+pyobjc-framework-WebKit==11.1; sys_platform == 'darwin'
+pywin32==311; sys_platform == 'win32'
+
+# --- Document parsing and generation ------------------------------------------------
+openpyxl==3.1.5
+python-docx==1.2.0
+PyMuPDF==1.26.5
+Pillow==11.3.0
+datefinder==1.0.0
+
+# --- Search index --------------------------------------------------------------------
+chromadb==1.5.9
+onnxruntime==1.19.2
+tokenizers==0.22.2
+numpy==2.0.2
+
+# --- Networking ------------------------------------------------------------------------
+requests==2.32.5

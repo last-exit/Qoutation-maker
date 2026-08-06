@@ -12,6 +12,31 @@ def convert_to_pdf(input_path):
     pdf_path = os.path.splitext(input_path)[0] + ".pdf"
     suffix = os.path.splitext(input_path)[1].lower()
 
+    import sys
+    import subprocess
+    import shutil
+
+    if sys.platform == "darwin":
+        soffice = shutil.which("soffice") or (
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice"
+            if os.path.exists("/Applications/LibreOffice.app/Contents/MacOS/soffice")
+            else None
+        )
+        if soffice:
+            try:
+                out_dir = os.path.dirname(input_path) or "."
+                subprocess.run(
+                    [soffice, "--headless", "--convert-to", "pdf", input_path, "--outdir", out_dir],
+                    check=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                if os.path.exists(pdf_path):
+                    return {"success": True, "pdf_path": pdf_path}
+            except Exception as e:
+                return {"success": False, "error": f"LibreOffice PDF conversion failed: {e}"}
+        return {"success": False, "error": "PDF conversion on Mac requires LibreOffice (or opens source .xlsx/.docx file directly)."}
+
     try:
         import win32com.client
         import pythoncom
@@ -58,10 +83,19 @@ def convert_to_pdf(input_path):
         pythoncom.CoUninitialize()
 
 
+import sys
+import subprocess
+
+
 def open_file(path):
     """Opens a file with the OS default handler (e.g. default PDF viewer)."""
     try:
-        os.startfile(path)
+        if hasattr(os, "startfile"):
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=True)
+        else:
+            subprocess.run(["xdg-open", path], check=True)
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}

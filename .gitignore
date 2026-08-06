@@ -15,8 +15,29 @@ chroma_db_backup_*/
 
 # Quotation history and PM corrections contain real client records.
 history.db
+history.db-wal
+history.db-shm
 corrections.db
+corrections.db-wal
+corrections.db-shm
 corrections_backup_*.db
+catalog.db
+catalog.db-wal
+catalog.db-shm
+
+# Product photos extracted from client quotations, content-addressed by image_store.
+# Regenerable by re-syncing, and they are client material either way.
+images/
+
+# Automatic database snapshots taken before every index rebuild and migration.
+backups/
+
+# Runtime log.
+logs/
+
+# The exported ONNX embedding model (~91 MB), produced by tools/export_onnx.py.
+# Regenerate rather than commit: GitHub warns past 50 MB and it is derived, not source.
+models/
 
 # --- Generated output ---------------------------------------------------------
 # Quotations written by the app, named after real clients.

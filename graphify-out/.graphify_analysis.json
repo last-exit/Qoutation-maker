@@ -1,0 +1,590 @@
+{
+  "communities": {
+    "0": [
+      "parsing",
+      "parsing_assign_images_to_rows",
+      "parsing_build_item",
+      "parsing_cell_image_base64",
+      "parsing_classify_columns",
+      "parsing_clean_rate",
+      "parsing_collect_spec_lines",
+      "parsing_distinct_row_cells",
+      "parsing_evaluate_review_flags",
+      "parsing_extract_date",
+      "parsing_extract_labeled_venue_from_rows",
+      "parsing_extract_labeled_venue_from_text",
+      "parsing_extract_pdf_page_images",
+      "parsing_extract_trailing_numbers",
+      "parsing_extract_venue",
+      "parsing_get_pdf_lines_with_bbox",
+      "parsing_heuristic_columns",
+      "parsing_load_known_venues",
+      "parsing_looks_like_description",
+      "parsing_looks_like_spec_line",
+      "parsing_normalize_unit",
+      "parsing_page_positions_valid",
+      "parsing_parse_docx_file",
+      "parsing_parse_excel_file",
+      "parsing_parse_pdf_file",
+      "parsing_rationale_1",
+      "parsing_rationale_134",
+      "parsing_rationale_15",
+      "parsing_rationale_162",
+      "parsing_rationale_177",
+      "parsing_rationale_191",
+      "parsing_rationale_263",
+      "parsing_rationale_289",
+      "parsing_rationale_304",
+      "parsing_rationale_345",
+      "parsing_rationale_378",
+      "parsing_rationale_417",
+      "parsing_rationale_469",
+      "parsing_rationale_638",
+      "parsing_rationale_655",
+      "parsing_rationale_67",
+      "parsing_rationale_673",
+      "parsing_rationale_781",
+      "parsing_rationale_811",
+      "parsing_rationale_838",
+      "parsing_rationale_888",
+      "parsing_rationale_906",
+      "parsing_rationale_93",
+      "parsing_rationale_930"
+    ],
+    "1": [
+      "doc_generator",
+      "doc_generator_add_page_number",
+      "doc_generator_apply_print_setup",
+      "doc_generator_build_footer",
+      "doc_generator_compute_totals",
+      "doc_generator_compute_valid_until",
+      "doc_generator_create_fallback_template",
+      "doc_generator_decode_image_payload",
+      "doc_generator_detect_template_columns",
+      "doc_generator_generate_excel_dynamic",
+      "doc_generator_generate_word_dynamic",
+      "doc_generator_insert_excel_logo",
+      "doc_generator_load_company_config",
+      "doc_generator_load_logo_scaled",
+      "doc_generator_load_terms_config",
+      "doc_generator_no_borders",
+      "doc_generator_prepare_thumbnail",
+      "doc_generator_rationale_1",
+      "doc_generator_rationale_111",
+      "doc_generator_rationale_122",
+      "doc_generator_rationale_185",
+      "doc_generator_rationale_197",
+      "doc_generator_rationale_236",
+      "doc_generator_rationale_268",
+      "doc_generator_rationale_285",
+      "doc_generator_rationale_380",
+      "doc_generator_rationale_426",
+      "doc_generator_rationale_450",
+      "doc_generator_rationale_748",
+      "doc_generator_rationale_774",
+      "doc_generator_rationale_810",
+      "doc_generator_rationale_841",
+      "doc_generator_rationale_87",
+      "doc_generator_rationale_875",
+      "doc_generator_row_height_for",
+      "doc_generator_rule",
+      "doc_generator_section_heading",
+      "doc_generator_set_cell_border",
+      "doc_generator_set_cell_shading",
+      "doc_generator_set_char_spacing",
+      "doc_generator_set_col_widths",
+      "doc_generator_split_name_and_spec",
+      "doc_generator_style_row",
+      "doc_generator_write_cell"
+    ],
+    "2": [
+      "app_api",
+      "app_applybulkvenue",
+      "app_applycompanybranding",
+      "app_applyimagetoitem",
+      "app_applylibrarymatch",
+      "app_bootbackend",
+      "app_checkdbstatus",
+      "app_compilequote",
+      "app_deletecatalogitem",
+      "app_deletehistoryitem",
+      "app_dismissreviewgroup",
+      "app_dismissreviewitem",
+      "app_loadcatalog",
+      "app_loadhomedashboard",
+      "app_loadmarginstat",
+      "app_opensourcefile",
+      "app_pasteimageurl",
+      "app_preflightwarnings",
+      "app_refreshcatalogcache",
+      "app_removereviewcardfromdom",
+      "app_reopenpdf",
+      "app_reviewemptystate",
+      "app_savecatalogitem",
+      "app_savedraftimagetolibrary",
+      "app_savereviewcorrection",
+      "app_selectsuggestedimage",
+      "app_shareviaemail",
+      "app_shareviawhatsapp",
+      "app_showtoast",
+      "app_syncfolder",
+      "app_updateanalyticsdashboard",
+      "app_updatequotestatus",
+      "app_uploadimageforitem",
+      "requirements_datefinder",
+      "requirements_google_api_python_client",
+      "requirements_google_auth_httplib2",
+      "requirements_google_auth_oauthlib",
+      "requirements_manifest",
+      "requirements_openpyxl",
+      "requirements_pillow",
+      "requirements_pymupdf",
+      "requirements_python_docx",
+      "requirements_pywin32"
+    ],
+    "3": [
+      "app_adjustrate",
+      "app_catalogcache",
+      "app_closecatalogitemmodal",
+      "app_closeclientledgermodal",
+      "app_closeimagepicker",
+      "app_closemodal",
+      "app_closesettingsmodal",
+      "app_closesuccessmodal",
+      "app_draftitems",
+      "app_findcatalogcost",
+      "app_historycache",
+      "app_hydrateicons",
+      "app_icons",
+      "app_initcompilervsplit",
+      "app_inittheme",
+      "app_initworkspacesplitter",
+      "app_js_app",
+      "app_lastlibrarymatches",
+      "app_lastmatches",
+      "app_ondiscountvaluechange",
+      "app_patchdraftrowrate",
+      "app_releasefocustrap",
+      "app_resetrate",
+      "app_review_reasons",
+      "app_setdiscounttype",
+      "app_svgwrap",
+      "app_tab_eyebrows",
+      "app_tab_titles",
+      "app_toast_icons",
+      "app_toggletheme",
+      "app_unit_options",
+      "app_updatedraftvalue",
+      "app_updatesummary",
+      "app_updatethemeicon"
+    ],
+    "4": [
+      "app_quotationapi",
+      "app_quotationapi_compile_quotation",
+      "app_quotationapi_delete_catalog_item",
+      "app_quotationapi_delete_history_item",
+      "app_quotationapi_delete_photo_from_library",
+      "app_quotationapi_fetch_image_from_url",
+      "app_quotationapi_fetch_image_suggestions",
+      "app_quotationapi_get_analytics",
+      "app_quotationapi_get_catalog_items",
+      "app_quotationapi_get_client_ledger",
+      "app_quotationapi_get_company_info",
+      "app_quotationapi_get_db_status",
+      "app_quotationapi_get_history",
+      "app_quotationapi_get_history_item",
+      "app_quotationapi_get_margin_summary",
+      "app_quotationapi_get_photo_library_count",
+      "app_quotationapi_init",
+      "app_quotationapi_open_external_link",
+      "app_quotationapi_open_path",
+      "app_quotationapi_save_catalog_item",
+      "app_quotationapi_update_payment",
+      "app_quotationapi_update_quotation_status",
+      "app_quotationapi_upload_image_dialog"
+    ],
+    "5": [
+      "history_db",
+      "history_db_connect",
+      "history_db_delete_quotation_history",
+      "history_db_get_client_ledger",
+      "history_db_get_margin_summary",
+      "history_db_get_quotation_by_id",
+      "history_db_get_quotation_history",
+      "history_db_init_db",
+      "history_db_migrate",
+      "history_db_peek_next_quotation_id",
+      "history_db_rationale_1",
+      "history_db_rationale_109",
+      "history_db_rationale_127",
+      "history_db_rationale_140",
+      "history_db_rationale_157",
+      "history_db_rationale_197",
+      "history_db_rationale_42",
+      "history_db_rationale_69",
+      "history_db_save_quotation_history",
+      "history_db_update_payment",
+      "history_db_update_quotation_status"
+    ],
+    "6": [
+      "app_changemarkup",
+      "app_esc",
+      "app_groupbyfile",
+      "app_icon",
+      "app_loadhomerecent",
+      "app_loadreviewqueue",
+      "app_openclientledger",
+      "app_openclientledgerforquote",
+      "app_renderclientledger",
+      "app_renderreviewqueue",
+      "app_reviewreasoninfo",
+      "app_runimagesearch",
+      "app_searchmatcher",
+      "app_skeletoncards",
+      "requirements_chromadb",
+      "requirements_requests",
+      "requirements_sentence_transformers"
+    ],
+    "7": [
+      "app_gotonewquotation",
+      "app_gotosync",
+      "app_inittabskeyboardnav",
+      "app_opensettingsmodal",
+      "app_positionactivetabpill",
+      "app_switchtab",
+      "assets_red_cube_logo_image",
+      "index_cube3d_logo",
+      "index_page",
+      "index_view_compiler",
+      "index_view_history",
+      "index_view_home",
+      "index_view_review",
+      "style_stylesheet"
+    ],
+    "8": [
+      "impeccable_critique_2026_07_31t08_08_49z_index_html",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_design_health_score_23_40_acceptable",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_design_specificity_verdict",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_false_positives_discarded",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_minor_observations",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p0_generate_quotation_has_no_guard_rail_before_a_client_facing_document",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p0_the_annual_markup_is_a_no_op_for_76_of_the_catalogue_while_claiming_otherwise",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p0_the_application_is_not_operable_by_keyboard",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p1_closed_modals_stay_in_the_tab_order_exposing_a_destructive_action",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p1_text_muted_fails_wcag_aa_in_both_themes_every_field_label_in_the_app",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_p2_rate_adjustment_silently_loses_money_and_destroys_focus",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_persona_red_flags",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_priority_issues",
+      "impeccable_critique_2026_07_31t08_08_49z_index_html_questions_to_consider"
+    ],
+    "9": [
+      "image_tools",
+      "image_tools_bytes_from_local_file",
+      "image_tools_bytes_to_thumbnail_base64",
+      "image_tools_fetch_image_as_base64",
+      "image_tools_fetch_image_suggestions",
+      "image_tools_get_embedded_image_base64",
+      "image_tools_pil_to_base64",
+      "image_tools_rationale_1",
+      "image_tools_rationale_40",
+      "image_tools_rationale_70",
+      "image_tools_rationale_80",
+      "image_tools_rationale_90"
+    ],
+    "10": [
+      "catalog_db",
+      "catalog_db_add_catalog_item",
+      "catalog_db_connect",
+      "catalog_db_delete_catalog_item",
+      "catalog_db_find_catalog_item_by_description",
+      "catalog_db_get_catalog_items",
+      "catalog_db_init_db",
+      "catalog_db_norm_desc",
+      "catalog_db_rationale_1",
+      "catalog_db_rationale_110",
+      "catalog_db_update_catalog_item"
+    ],
+    "11": [
+      "corrections_db",
+      "corrections_db_connect",
+      "corrections_db_get_all_corrections",
+      "corrections_db_get_correction",
+      "corrections_db_init_db",
+      "corrections_db_norm_key",
+      "corrections_db_rationale_1",
+      "corrections_db_rationale_46",
+      "corrections_db_rationale_91",
+      "corrections_db_save_correction"
+    ],
+    "12": [
+      "app_distance_to_similarity",
+      "app_elapsed_years",
+      "app_quotationapi_get_model",
+      "app_quotationapi_save_photo_to_library",
+      "app_quotationapi_search_items",
+      "app_quotationapi_search_photo_library",
+      "app_rationale_106",
+      "app_rationale_200",
+      "app_rationale_80"
+    ],
+    "13": [
+      "app_applycatalogfilter",
+      "app_filtercatalog",
+      "app_formatage",
+      "app_money",
+      "app_paymentcellhtml",
+      "app_rendercatalogtable",
+      "app_rendermatches",
+      "app_uplifthtml"
+    ],
+    "14": [
+      "app_crossfill_images",
+      "app_is_generic_service",
+      "app_load_sync_config",
+      "app_main",
+      "app_py_app",
+      "app_quotationapi_index_files",
+      "app_rationale_135",
+      "app_rationale_146"
+    ],
+    "15": [
+      "app_addcustomdraftrow",
+      "app_addmatcheditemtodraft",
+      "app_clonehistoryitem",
+      "app_deletedraftitem",
+      "app_isborrowedphoto",
+      "app_renderdraft",
+      "app_uid"
+    ],
+    "16": [
+      "app_applyhistoryfilters",
+      "app_filterhistory",
+      "app_loadhistory",
+      "app_renderhistorytable",
+      "app_sethistorystatusfilter",
+      "app_statuspillhtml",
+      "app_updatepayment"
+    ],
+    "17": [
+      "app_opencatalogitemmodal",
+      "app_openimagepicker",
+      "app_openmodal",
+      "app_runlibrarysearch",
+      "app_showsuccessmodal",
+      "app_switchimagepickertab",
+      "app_trapfocus"
+    ],
+    "18": [
+      "app_quotationapi_bulk_set_venue_for_file",
+      "app_quotationapi_dismiss_review_item",
+      "app_quotationapi_save_correction",
+      "app_rationale_515",
+      "app_rationale_549",
+      "app_rationale_594"
+    ],
+    "19": [
+      "pdf_export",
+      "pdf_export_convert_to_pdf",
+      "pdf_export_open_file",
+      "pdf_export_rationale_1",
+      "pdf_export_rationale_6",
+      "pdf_export_rationale_66"
+    ],
+    "20": [
+      "sharing",
+      "sharing_build_mailto_link",
+      "sharing_build_whatsapp_link",
+      "sharing_item_summary_text",
+      "sharing_rationale_1"
+    ],
+    "21": [
+      "app_quotationapi_get_review_queue",
+      "app_rationale_469"
+    ],
+    "22": [
+      "app_quotationapi_open_source_file",
+      "app_rationale_844"
+    ],
+    "23": [
+      "claude",
+      "claude_graphify"
+    ],
+    "24": [
+      "run",
+      "run_sh__entry"
+    ]
+  },
+  "cohesion": {
+    "0": 0.06802721088435375,
+    "1": 0.07928118393234672,
+    "2": 0.09080841638981174,
+    "3": 0.08912655971479501,
+    "4": 0.08695652173913043,
+    "5": 0.14761904761904762,
+    "6": 0.19852941176470587,
+    "7": 0.21978021978021978,
+    "8": 0.14285714285714285,
+    "9": 0.22727272727272727,
+    "10": 0.3090909090909091,
+    "11": 0.3333333333333333,
+    "12": 0.25,
+    "13": 0.32142857142857145,
+    "14": 0.2857142857142857,
+    "15": 0.38095238095238093,
+    "16": 0.42857142857142855,
+    "17": 0.2857142857142857,
+    "18": 0.3333333333333333,
+    "19": 0.3333333333333333,
+    "20": 0.6,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0
+  },
+  "gods": [
+    {
+      "id": "app_api",
+      "label": "api()",
+      "degree": 34
+    },
+    {
+      "id": "app_quotationapi",
+      "label": "QuotationApi",
+      "degree": 34
+    },
+    {
+      "id": "index_page",
+      "label": "Red Cube Smart Quotation Engine (index.html)",
+      "degree": 28
+    },
+    {
+      "id": "app_showtoast",
+      "label": "showToast()",
+      "degree": 21
+    },
+    {
+      "id": "app_icon",
+      "label": "icon()",
+      "degree": 19
+    },
+    {
+      "id": "app_esc",
+      "label": "esc()",
+      "degree": 19
+    },
+    {
+      "id": "doc_generator_generate_word_dynamic",
+      "label": "generate_word_dynamic()",
+      "degree": 17
+    },
+    {
+      "id": "app_switchtab",
+      "label": "switchTab()",
+      "degree": 14
+    },
+    {
+      "id": "parsing_parse_pdf_file",
+      "label": "parse_pdf_file()",
+      "degree": 13
+    },
+    {
+      "id": "app_money",
+      "label": "money()",
+      "degree": 13
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Red Cube Logo image asset (red_cube_logo.png)",
+      "target": "CSS-drawn Red Cube Icon (brandlock cube3d)",
+      "source_files": [
+        "assets/red_cube_logo.png",
+        "index.html"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ image); connects across different repos/directories; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "switchTab()",
+      "target": "Home View (view-home)",
+      "source_files": [
+        "app.js",
+        "index.html"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ code); connects across different repos/directories; peripheral node `Home View (view-home)` unexpectedly reaches hub `switchTab()`"
+    },
+    {
+      "source": "switchTab()",
+      "target": "Compiler Workspace View (view-compiler)",
+      "source_files": [
+        "app.js",
+        "index.html"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ code); connects across different repos/directories; peripheral node `Compiler Workspace View (view-compiler)` unexpectedly reaches hub `switchTab()`"
+    },
+    {
+      "source": "switchTab()",
+      "target": "Needs Review View (view-review)",
+      "source_files": [
+        "app.js",
+        "index.html"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ code); connects across different repos/directories; peripheral node `Needs Review View (view-review)` unexpectedly reaches hub `switchTab()`"
+    },
+    {
+      "source": "switchTab()",
+      "target": "Quotation History View (view-history)",
+      "source_files": [
+        "app.js",
+        "index.html"
+      ],
+      "confidence": "INFERRED",
+      "relation": "references",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (doc ↔ code); connects across different repos/directories; peripheral node `Quotation History View (view-history)` unexpectedly reaches hub `switchTab()`"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `QuotationApi` connect `QuotationApi` to `._get_model`, `app.py`, `.save_correction`, `.get_review_queue`, `.open_source_file`?",
+      "why": "High betweenness centrality (0.104) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `Red Cube Smart Quotation Engine (index.html)` connect `Red Cube Smart Quotation Engine (index.html)` to `api`, `app.js`, `esc`, `renderDraft`, `renderHistoryTable`, `openModal`?",
+      "why": "High betweenness centrality (0.012) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `syncFolder()` connect `api` to `app.js`, `esc`, `Red Cube Smart Quotation Engine (index.html)`?",
+      "why": "High betweenness centrality (0.011) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `Design Health Score — 23/40 (Acceptable)`, `Design Specificity Verdict`, `[P0] The Annual Markup is a no-op for 76% of the catalogue — while claiming otherwise` to the rest of the system?",
+      "why": "26 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `parsing.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06802721088435375 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `doc_generator.py` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07928118393234672 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `api` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.09080841638981174 - nodes in this community are weakly interconnected."
+    }
+  ]
+}

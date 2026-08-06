@@ -180,7 +180,7 @@ input[type="number"], td.num, th.num {
 .toast {
   display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: var(--radius-md);
   background: var(--bg-panel); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg);
-  margin-bottom: 10px; font-size: 11.5px; font-weight: 600; animation: toastIn .3s var(--ease-spring) both;
+  margin-bottom: 10px; font-size: 11px; font-weight: 600; animation: toastIn .3s var(--ease-spring) both;
   overflow: hidden;
 }
 .toast.closing { animation: toastOut .25s var(--ease-out) forwards; }
@@ -190,7 +190,7 @@ input[type="number"], td.num, th.num {
 .toast-warning .toast-icon { color: var(--warning); }
 .toast-info .toast-icon { color: var(--accent-strong); }
 .toast-msg { flex: 1; line-height: 1.4; color: var(--text-primary); font-weight: 500; word-break: break-word; }
-.toast-close { flex-shrink: 0; cursor: pointer; color: var(--text-muted); opacity: .6; }
+.toast-close { flex-shrink: 0; cursor: pointer; color: var(--text-muted); opacity: .6; background: none; border: none; padding: 0; font: inherit; }
 .toast-close:hover { opacity: 1; }
 
 /* ---------- Status badges ---------- */
@@ -215,7 +215,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
   border-bottom: 1px solid var(--border); box-shadow: 0 1px 0 var(--border), 0 10px 24px -16px rgba(48,47,44,.25);
 }
 .brandlock { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.brand-title { font-family: var(--font-display); font-size: 13.5px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; color: var(--text-primary); }
+.brand-title { font-family: var(--font-display); font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: .02em; color: var(--text-primary); }
 
 /* A literal cube for Red Cube — three CSS faces in perspective, not a flat rounded square. */
 .cube3d { width: 22px; height: 22px; position: relative; transform-style: preserve-3d; transform: rotateX(-18deg) rotateY(28deg); flex-shrink: 0; }
@@ -227,7 +227,11 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 /* Sliding pill segmented tab switcher — replaces the stacked sidebar nav entirely. */
 .segwrap { position: relative; display: flex; background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: 999px; padding: 4px; gap: 2px; }
 .segpill {
-  position: absolute; top: 4px; bottom: 4px; left: 4px; width: 120px; border-radius: 999px;
+  /* left:0, not 4px — positionActiveTabPill() already derives its translateX from
+     active.offsetLeft, which is measured from the padded track's own inner edge. A
+     nonzero static `left` here double-counts that inset and drags the pill ~4px right
+     of the tab it's supposed to mark. */
+  position: absolute; top: 4px; bottom: 4px; left: 0; width: 120px; border-radius: 999px;
   background: var(--sidebar-bg); box-shadow: 0 4px 12px -4px rgba(0,0,0,.3);
   transition: transform .32s cubic-bezier(.16,1,.3,1), width .32s cubic-bezier(.16,1,.3,1); z-index: 0;
 }
@@ -235,7 +239,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 :root[data-theme="dark"] .segpill { background: var(--accent); }
 .seg {
   position: relative; z-index: 1; display: flex; align-items: center; gap: 7px; padding: 7px 15px;
-  border-radius: 999px; font-size: 11.5px; font-weight: 700; color: var(--text-secondary); cursor: pointer;
+  border-radius: 999px; font-size: 11px; font-weight: 700; color: var(--text-secondary); cursor: pointer;
   white-space: nowrap; transition: color .25s;
 }
 .seg .icon { width: 14px; height: 14px; }
@@ -255,7 +259,7 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
 }
 .cmdk:hover { border-color: var(--border-strong); color: var(--text-secondary); }
 .cmdk kbd {
-  font-size: 10.5px; font-weight: 700; background: var(--bg-panel); border: 1px solid var(--border-strong);
+  font-size: 10px; font-weight: 700; background: var(--bg-panel); border: 1px solid var(--border-strong);
   border-radius: 4px; padding: 1px 5px; color: var(--text-secondary); font-family: var(--font);
 }
 
@@ -316,8 +320,8 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
   width: 32px; height: 32px; border-radius: var(--radius-sm); margin-bottom: 12px;
   background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center;
 }
-.home-action-title { font-size: 12.5px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
-.home-action-desc { font-size: 10.5px; color: var(--text-muted); line-height: 1.5; }
+.home-action-title { font-size: 13px; font-weight: 700; color: var(--text-primary); margin-bottom: 4px; }
+.home-action-desc { font-size: 10px; color: var(--text-muted); line-height: 1.5; }
 
 .home-columns { display: grid; grid-template-columns: 1.1fr 1fr; gap: 14px; align-items: start; }
 .home-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 20px; box-shadow: var(--shadow-card); }
@@ -330,9 +334,9 @@ kbd.kbd-hint { display: inline-flex; align-items: center; justify-content: cente
   border: 1px solid transparent; transition: background .15s var(--ease-out), border-color .15s var(--ease-out);
 }
 .home-recent-item:hover { background: var(--bg-hover); border-color: var(--border); }
-.home-recent-client { font-size: 11.5px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+.home-recent-client { font-size: 11px; font-weight: 700; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
 .home-recent-meta { font-size: 10px; color: var(--text-muted); display: flex; align-items: center; gap: 4px; margin-top: 2px; }
-.home-recent-total { font-size: 11.5px; font-weight: 700; color: var(--accent-strong); }
+.home-recent-total { font-size: 11px; font-weight: 700; color: var(--accent-strong); }
 
 @media (max-width: 980px) {
   .home-actions { grid-template-columns: repeat(2, 1fr); }
@@ -395,7 +399,7 @@ body.ws-dragging { cursor: col-resize; user-select: none; }
 .panel-right .input, .panel-right .btn { font-size: 11px; }
 .panel-right .summary-box { font-size: 11px; }
 .panel-right .summary-line.total span:last-child { font-size: 21px; }
-.panel-right .draft-desc, .panel-right textarea.input { font-size: 11.5px; }
+.panel-right .draft-desc, .panel-right textarea.input { font-size: 11px; }
 
 /* Horizontal splitter: trades height between the item list and the pricing block. The footer
    is height-driven rather than content-sized so the list can claim the difference. */
@@ -430,7 +434,7 @@ body.vsplit-dragging { cursor: row-resize; user-select: none; }
 .panel-right { min-width: 0; }
 
 /* ---------- Form elements ---------- */
-label.field-label { display: block; font-size: 10.5px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
+label.field-label { display: block; font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
 .input, select.input, textarea.input {
   width: 100%; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-primary);
   border-radius: var(--radius-sm); padding: 9px 11px; font-size: 12px; font-family: var(--font); outline: none;
@@ -446,7 +450,7 @@ textarea.input { resize: none; line-height: 1.5; }
 
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid transparent; border-radius: var(--radius-sm); font-weight: 600; font-size: 11.5px;
+  border: 1px solid transparent; border-radius: var(--radius-sm); font-weight: 600; font-size: 11px;
   padding: 8px 14px; cursor: pointer; transition: transform .15s var(--ease-out), background .15s, opacity .15s, box-shadow .2s var(--ease-out); font-family: var(--font);
 }
 .btn:active { transform: scale(.97); }
@@ -455,7 +459,7 @@ textarea.input { resize: none; line-height: 1.5; }
 .btn-primary:hover:not(:disabled) { filter: brightness(1.08); transform: translateY(-1px); box-shadow: 0 10px 24px var(--accent-soft); }
 .btn-ghost { background: var(--bg-panel-alt); color: var(--text-secondary); border-color: var(--border); }
 .btn-ghost:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
-.btn-sm { padding: 5px 10px; font-size: 10.5px; }
+.btn-sm { padding: 5px 10px; font-size: 10px; }
 .btn-block { width: 100%; }
 .btn-danger-ghost { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
 
@@ -478,7 +482,7 @@ textarea.input { resize: none; line-height: 1.5; }
 .review-file-group { margin-bottom: 22px; }
 .review-bulk-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin-bottom: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--radius-sm); color: var(--accent-strong); }
 .review-bulk-row .input { flex: 1; }
-.review-bulk-hint { font-size: 10.5px; color: var(--text-muted); margin: -4px 0 10px 2px; }
+.review-bulk-hint { font-size: 10px; color: var(--text-muted); margin: -4px 0 10px 2px; }
 .review-file-header {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   padding: 8px 12px; background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -487,7 +491,7 @@ textarea.input { resize: none; line-height: 1.5; }
 .review-file-name { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; color: var(--text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .review-card { background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px; margin-bottom: 10px; }
 .review-card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
-.review-desc { font-size: 11.5px; font-weight: 600; margin-bottom: 8px; }
+.review-desc { font-size: 11px; font-weight: 600; margin-bottom: 8px; }
 /* Was one italic muted run-on of joined reasons; now one actionable instruction per line. */
 .review-reason { font-size: 11px; color: var(--text-secondary); margin: 0 0 10px; padding-left: 16px; }
 .review-reason li { margin-bottom: 3px; }
@@ -520,11 +524,11 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 }
 
 .match-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
-.match-desc { font-size: 11.5px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.match-desc { font-size: 11px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .match-rates { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid var(--border); padding-top: 8px; font-weight: 600; }
 .rate-label { font-size: 10px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; }
 
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); padding: 40px 16px; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: 11.5px; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: var(--text-muted); padding: 40px 16px; border: 1px dashed var(--border); border-radius: var(--radius-md); font-size: 11px; }
 .empty-state .icon-lg { margin-bottom: 8px; color: var(--border-strong); }
 
 /* 4-up while the panel is wide; falls back to 2x2 once each field would get too narrow
@@ -546,7 +550,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .draft-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- Summary ---------- */
-.summary-box { background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 15px 16px; font-size: 11.5px; font-weight: 600; }
+.summary-box { background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 15px 16px; font-size: 11px; font-weight: 600; }
 .summary-line { display: flex; justify-content: space-between; padding: 5px 0; color: var(--text-secondary); }
 .summary-line.total { border-top: 1px solid var(--border-strong); margin-top: 6px; padding-top: 12px; align-items: baseline; }
 .summary-line.total > span:first-child { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; letter-spacing: -.01em; font-size: 13px; color: var(--text-primary); }
@@ -559,6 +563,14 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .banner-error { background: var(--danger-soft); border-color: var(--danger-soft); color: var(--danger); }
 .banner-warning { background: var(--warning-soft); border-color: var(--warning-soft); color: var(--warning); }
 
+/* Client name in the Invoices table opens their ledger — a text button, not a chip, so it
+   reads as data with an action attached rather than another badge competing with Status/Payment. */
+.client-link {
+  background: none; border: none; padding: 0; font: inherit; font-weight: 700;
+  color: var(--text-primary); cursor: pointer; text-align: left;
+}
+.client-link:hover { color: var(--accent-strong); text-decoration: underline; }
+
 /* ---------- History tab ---------- */
 .history-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 12px; flex-wrap: wrap; }
 .status-filter-row { display: flex; gap: 6px; }
@@ -569,7 +581,7 @@ input[type="range"] { flex: 1; accent-color: var(--accent); height: 4px; cursor:
 .status-filter-chip:hover { border-color: var(--border-strong); color: var(--text-primary); }
 .status-filter-chip.active { background: var(--accent); color: #ffffff; font-weight: 800; border-color: var(--accent); }
 .history-table-wrap { overflow: auto; height: calc(100% - 50px); border: 1px solid var(--border); border-radius: var(--radius-lg); }
-table.history-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+table.history-table { width: 100%; border-collapse: collapse; font-size: 11px; }
 table.history-table th { position: sticky; top: 0; background: var(--bg-panel-alt); text-align: left; padding: 10px 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
 table.history-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; transition: background .15s var(--ease-out); }
 table.history-table tr:hover td { background: var(--bg-hover); }
@@ -578,9 +590,14 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
 /* ---------- Modals ---------- */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center;
-  z-index: 100; opacity: 0; pointer-events: none; transition: opacity .2s var(--ease-out);
+  z-index: 100; opacity: 0; pointer-events: none;
+  /* visibility, not just opacity/pointer-events: without it every control inside a "closed"
+     modal (e.g. the Sync button) stays keyboard-focusable and Enter-activatable even though
+     it's invisible. Delay the hide so the opacity transition still gets to play on close. */
+  visibility: hidden;
+  transition: opacity .2s var(--ease-out), visibility 0s linear .2s;
 }
-.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal-overlay.open { opacity: 1; pointer-events: auto; visibility: visible; transition: opacity .2s var(--ease-out); }
 .modal {
   background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: var(--radius-lg);
   width: 460px; max-width: 92vw; max-height: 85vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg);
@@ -594,7 +611,7 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
 .modal-footer { padding: 14px 18px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 8px; }
 
 .modal-tabs { display: flex; gap: 4px; margin-bottom: 14px; background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 3px; }
-.modal-tab { flex: 1; text-align: center; padding: 6px; font-size: 10.5px; font-weight: 700; border-radius: 5px; cursor: pointer; color: var(--text-secondary); }
+.modal-tab { flex: 1; text-align: center; padding: 6px; font-size: 10px; font-weight: 700; border-radius: 5px; cursor: pointer; color: var(--text-secondary); }
 .modal-tab.active { background: var(--accent); color: #ffffff; font-weight: 800; }
 
 .image-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -602,9 +619,39 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
 .image-grid img:hover { border-color: var(--accent); }
 
 .share-btn-row { display: flex; gap: 8px; margin-top: 14px; }
-.share-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-panel-alt); cursor: pointer; font-size: 10.5px; font-weight: 700; color: var(--text-secondary); }
+.share-btn { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--bg-panel-alt); cursor: pointer; font-size: 10px; font-weight: 700; color: var(--text-secondary); }
 .share-btn:hover { border-color: var(--accent-border); color: var(--text-primary); }
 
 .format-choice { display: flex; gap: 8px; }
 .format-choice label { flex: 1; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 11px; cursor: pointer; }
 .format-choice input { accent-color: var(--accent); }
+
+/* ---------- Button resets ---------- */
+/* Former onclick <div>/<span> elements are now real <button>s so they're keyboard-focusable
+   and activatable. Undo the browser's default button chrome (centered text, own border) —
+   these elements already carry their own visual language via the classes below. */
+.seg, .cmdk, .home-action-card, .status-filter-chip, .modal-tab, .home-recent-item, .share-btn, .icon-btn, .draft-thumb {
+  font: inherit;
+}
+.seg, .modal-tab {
+  background: transparent;
+  border: none;
+}
+.icon-btn, .draft-thumb {
+  padding: 0;
+}
+.status-filter-chip {
+  text-align: left;
+}
+
+/* ---------- Focus visibility ---------- */
+/* The app previously had almost no custom :focus styling, so keyboard users tabbing through
+   had nothing to look at. One consistent ring, reusing the existing --ring token, across
+   every interactive control that didn't already define its own focus state. */
+.seg:focus-visible, .cmdk:focus-visible, .home-action-card:focus-visible, .status-filter-chip:focus-visible,
+.modal-tab:focus-visible, .home-recent-item:focus-visible, .share-btn:focus-visible, .icon-btn:focus-visible,
+.btn:focus-visible, .pct-btn:focus-visible, .status-select:focus-visible, .chip-link:focus-visible,
+.toast-close:focus-visible, .draft-thumb:focus-visible, .match-card:focus-visible, .client-link:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}

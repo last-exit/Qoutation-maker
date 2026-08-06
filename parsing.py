@@ -297,7 +297,10 @@ def looks_like_spec_line(text):
 
 # Markers written by the PM actions in the review queue. Once present, an item is never
 # re-flagged, so approving/dismissing survives a re-sync of the same source file.
-REVIEW_CLEARED_MARKERS = ("corrected by pm", "dismissed by pm")
+# Phrases written into flag_reason by a human review action. "reviewed by pm" covers the case
+# where a PM looked at an item and deliberately changed nothing — that decision has to survive
+# a re-sync too, or the same row returns to the queue on every sync forever.
+REVIEW_CLEARED_MARKERS = ("corrected by pm", "dismissed by pm", "reviewed by pm")
 
 
 def evaluate_review_flags(meta):
@@ -341,7 +344,7 @@ def evaluate_review_flags(meta):
 
 
 def _build_item(description, rate, unit, quote_date, venue, venue_confidence, venue_reason,
-                 file_name, image_base64, rate_confidence, rate_reason):
+                 file_name, image_ref, rate_confidence, rate_reason):
     """Assembles a parsed line item with confidence metadata attached, so low-confidence
     extractions can be routed to a review queue instead of silently entering the index."""
     reasons = [r for r in (rate_reason, venue_reason) if r]
@@ -359,7 +362,7 @@ def _build_item(description, rate, unit, quote_date, venue, venue_confidence, ve
         'quote_date': quote_date,
         'venue': venue,
         'file_name': file_name,
-        'image_base64': image_base64,
+        'image_ref': image_ref,
         'rate_confidence': rate_confidence,
         'venue_confidence': venue_confidence,
         'needs_review': needs_review,
@@ -616,16 +619,16 @@ def parse_excel_file(file_path):
 
             unit_str = normalize_unit(unit_val, desc_str)
 
-            img_base64 = ""
+            img_ref = ""
             if r in images_by_row:
-                img_base64 = image_tools.get_embedded_image_base64(images_by_row[r])
+                img_ref = image_tools.store_embedded_image(images_by_row[r])
 
             venue, venue_confidence, venue_reason = extract_venue(file_name, header_texts, header_rows)
 
             items.append(_build_item(
                 description=desc_str, rate=rate_float, unit=unit_str, quote_date=file_date,
                 venue=venue, venue_confidence=venue_confidence, venue_reason=venue_reason,
-                file_name=file_name, image_base64=img_base64,
+                file_name=file_name, image_ref=img_ref,
                 rate_confidence=rate_confidence, rate_reason=rate_reason,
             ))
 
@@ -651,7 +654,7 @@ def _distinct_row_cells(row):
     return out
 
 
-def _cell_image_base64(cell, document):
+def _cell_image_ref(cell, document):
     """Pulls the first embedded image out of a table cell, thumbnailed like every other
     image source, so photos sitting inside Word quotation tables reach the index too."""
     try:
@@ -663,7 +666,7 @@ def _cell_image_base64(cell, document):
             part = document.part.related_parts.get(rid)
             if part is None:
                 continue
-            return image_tools.bytes_to_thumbnail_base64(part.blob)
+            return image_tools.store_raw_bytes(part.blob)
     except Exception as e:
         print(f"Failed to extract image from docx cell: {e}")
     return ""
@@ -758,17 +761,17 @@ def parse_docx_file(file_path):
             else:
                 rate_confidence, rate_reason = "medium", "rate read from Word table without a total to verify against"
 
-            image_b64 = ""
+            image_ref = ""
             for cell in cells:
-                image_b64 = _cell_image_base64(cell, document)
-                if image_b64:
+                image_ref = _cell_image_ref(cell, document)
+                if image_ref:
                     break
 
             items.append(_build_item(
                 description=desc_str, rate=rate_float,
                 unit=normalize_unit(cell_text(unit_col) if unit_col else None, desc_str),
                 quote_date=file_date, venue=venue, venue_confidence=venue_confidence,
-                venue_reason=venue_reason, file_name=file_name, image_base64=image_b64,
+                venue_reason=venue_reason, file_name=file_name, image_ref=image_ref,
                 rate_confidence=rate_confidence, rate_reason=rate_reason,
             ))
 
@@ -809,7 +812,7 @@ def _get_pdf_lines_with_bbox(page):
 
 def _extract_pdf_page_images(page, max_images=40):
     """Pulls every embedded image on a page with its vertical position, thumbnailed and
-    normalized the same way Excel-embedded images are (see image_tools.get_embedded_image_base64),
+    stored the same way Excel-embedded images are (see image_tools.store_embedded_image),
     so photos already sitting in old quotation PDFs actually make it into the historical index
     instead of every PDF item silently having no image."""
     results = []
@@ -825,8 +828,8 @@ def _extract_pdf_page_images(page, max_images=40):
                 raw_bytes = img_dict.get("image")
                 if not raw_bytes:
                     continue
-                thumb_b64 = image_tools.bytes_to_thumbnail_base64(raw_bytes)
-                results.append({"y0": bbox[1], "y1": bbox[3], "image_base64": thumb_b64, "used": False})
+                stored_ref = image_tools.store_raw_bytes(raw_bytes)
+                results.append({"y0": bbox[1], "y1": bbox[3], "image_ref": stored_ref, "used": False})
             except Exception as e:
                 print(f"Failed to extract embedded PDF image (xref {xref}): {e}")
     except Exception as e:
@@ -849,7 +852,7 @@ def assign_images_to_rows(row_positions, page_images):
     photo size, or how many lines of description a row wraps to.
 
     row_positions: list of (row_index, y_top) for each item found on the page, in order.
-    Returns {row_index: image_base64}.
+    Returns {row_index: image_ref}.
     """
     if not page_positions_valid(row_positions) or not page_images:
         return {}
@@ -874,7 +877,7 @@ def assign_images_to_rows(row_positions, page_images):
             if overlap > best_overlap:
                 best_row, best_overlap = row_idx, overlap
         if best_row is not None and best_overlap > 0:
-            assigned[best_row] = img["image_base64"]
+            assigned[best_row] = img["image_ref"]
             img["used"] = True
 
     return assigned
@@ -1035,7 +1038,7 @@ def parse_pdf_file(file_path):
                     items.append(_build_item(
                         description=full_desc, rate=rate, unit=normalize_unit(None, remaining_desc),
                         quote_date=file_date, venue=venue, venue_confidence=venue_confidence,
-                        venue_reason=venue_reason, file_name=file_name, image_base64="",
+                        venue_reason=venue_reason, file_name=file_name, image_ref="",
                         rate_confidence=rate_confidence, rate_reason=rate_reason,
                     ))
                     idx += 1
@@ -1080,7 +1083,7 @@ def parse_pdf_file(file_path):
                 items.append(_build_item(
                     description=full_line, rate=rate_found, unit=normalize_unit(unit_found, line),
                     quote_date=file_date, venue=venue, venue_confidence=venue_confidence,
-                    venue_reason=venue_reason, file_name=file_name, image_base64="",
+                    venue_reason=venue_reason, file_name=file_name, image_ref="",
                     rate_confidence="low",
                     rate_reason="rate located via multi-line positional guess - verify",
                 ))
@@ -1089,7 +1092,7 @@ def parse_pdf_file(file_path):
                 idx += 1
 
         # Attach this page's photos now that every row band on it is known.
-        for row_idx, image_b64 in assign_images_to_rows(page_row_positions, page_images).items():
-            items[row_idx]['image_base64'] = image_b64
+        for row_idx, image_ref in assign_images_to_rows(page_row_positions, page_images).items():
+            items[row_idx]['image_ref'] = image_ref
 
     return items

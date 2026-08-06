@@ -1,0 +1,12 @@
+# Development and build-time extras. Not needed to run the app.
+-r requirements.txt
+
+# Test suite.
+pytest==8.4.2
+
+# Only needed to regenerate models/all-MiniLM-L6-v2 via `python tools/export_onnx.py`.
+# This is where torch lives — install it on a build machine, never in a shipped runtime.
+torch==2.8.0
+transformers==4.57.6
+sentence-transformers==5.1.2
+onnx==1.19.1

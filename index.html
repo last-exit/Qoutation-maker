@@ -17,16 +17,17 @@
       <span class="brand-title" id="brand-title-text">Red Cube</span>
     </div>
 
-    <div class="segwrap" id="segwrap">
+    <div class="segwrap" id="segwrap" role="tablist" aria-label="Primary navigation">
       <div class="segpill" id="segpill"></div>
-      <div class="seg active" id="tab-btn-home" data-tab="home" onclick="switchTab('home')"><span class="icon" data-icon="layers"></span> Home</div>
-      <div class="seg" id="tab-btn-compiler" data-tab="compiler" onclick="switchTab('compiler')"><span class="icon" data-icon="sheet"></span> Compiler</div>
-      <div class="seg" id="tab-btn-review" data-tab="review" onclick="switchTab('review')"><span class="icon" data-icon="alert"></span> Review<span class="tab-count hidden" id="review-tab-count">0</span></div>
-      <div class="seg" id="tab-btn-history" data-tab="history" onclick="switchTab('history')"><span class="icon" data-icon="history"></span> History</div>
+      <button type="button" class="seg active" id="tab-btn-home" data-tab="home" role="tab" aria-selected="true" aria-controls="view-home" tabindex="0" onclick="switchTab('home')"><span class="icon" data-icon="layers"></span> Home</button>
+      <button type="button" class="seg" id="tab-btn-compiler" data-tab="compiler" role="tab" aria-selected="false" aria-controls="view-compiler" tabindex="-1" onclick="switchTab('compiler')"><span class="icon" data-icon="sheet"></span> Compiler</button>
+      <button type="button" class="seg" id="tab-btn-catalog" data-tab="catalog" role="tab" aria-selected="false" aria-controls="view-catalog" tabindex="-1" onclick="switchTab('catalog')"><span class="icon" data-icon="database"></span> Catalog</button>
+      <button type="button" class="seg" id="tab-btn-review" data-tab="review" role="tab" aria-selected="false" aria-controls="view-review" tabindex="-1" onclick="switchTab('review')"><span class="icon" data-icon="alert"></span> Review<span class="tab-count hidden" id="review-tab-count">0</span></button>
+      <button type="button" class="seg" id="tab-btn-history" data-tab="history" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1" onclick="switchTab('history')"><span class="icon" data-icon="history"></span> Invoices</button>
     </div>
 
     <div class="cmd-right">
-      <div class="cmdk" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="search"></span>Search items<kbd>Ctrl K</kbd></div>
+      <button type="button" class="cmdk" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="search"></span>Search items<kbd>Ctrl K</kbd></button>
       <div class="status-badge">
         <span id="db-indicator" class="status-dot"></span>
         <span id="db-status-text">Checking database...</span>
@@ -43,7 +44,7 @@
     </div>
 
 <!-- Home -->
-<main class="main-view" id="view-home">
+<main class="main-view" id="view-home" role="tabpanel" aria-labelledby="tab-btn-home" tabindex="0">
   <div class="home-view">
     <section class="home-hero">
       <div class="home-hero-logo"><img src="assets/red_cube_logo.png" alt="Logo" onerror="this.style.display='none'"></div>
@@ -52,26 +53,26 @@
     </section>
 
     <section class="home-actions">
-      <div class="home-action-card" onclick="goToNewQuotation()">
+      <button type="button" class="home-action-card" onclick="goToNewQuotation()">
         <div class="home-action-icon"><span class="icon icon-lg" data-icon="sparkles"></span></div>
         <div class="home-action-title">New Quotation</div>
         <div class="home-action-desc">Search historical items and compile a fresh quote.</div>
-      </div>
-      <div class="home-action-card" onclick="goToSync()">
+      </button>
+      <button type="button" class="home-action-card" onclick="goToSync()">
         <div class="home-action-icon"><span class="icon icon-lg" data-icon="refresh"></span></div>
         <div class="home-action-title">Sync Historical Data</div>
         <div class="home-action-desc">Re-index your Drive folder for the latest files.</div>
-      </div>
-      <div class="home-action-card" onclick="switchTab('review')">
+      </button>
+      <button type="button" class="home-action-card" onclick="switchTab('review')">
         <div class="home-action-icon"><span class="icon icon-lg" data-icon="alert"></span></div>
         <div class="home-action-title">Needs Review</div>
         <div class="home-action-desc" id="home-review-desc">Check flagged prices and venues.</div>
-      </div>
-      <div class="home-action-card" onclick="switchTab('history')">
+      </button>
+      <button type="button" class="home-action-card" onclick="switchTab('history')">
         <div class="home-action-icon"><span class="icon icon-lg" data-icon="history"></span></div>
         <div class="home-action-title">Quotation History</div>
         <div class="home-action-desc">Browse, filter, and clone past quotes.</div>
-      </div>
+      </button>
     </section>
 
     <section class="home-columns">
@@ -92,7 +93,7 @@
           </div>
           <div class="stat-card">
             <div class="stat-icon" style="background:var(--accent-soft);color:var(--accent-strong);"><span class="icon" data-icon="tag"></span></div>
-            <div><div class="stat-label">Max Valuation</div><div class="stat-value" id="stat-max-price">0.00 AED</div></div>
+            <div><div class="stat-label">Margin This Month</div><div class="stat-value" id="stat-margin-month">0.00 AED</div></div>
           </div>
           <div class="stat-card">
             <div class="stat-icon" style="background:var(--success-soft);color:var(--success);"><span class="icon" data-icon="pin"></span></div>
@@ -113,7 +114,7 @@
 </main>
 
 <!-- Compiler Workspace -->
-<main class="main-view hidden" id="view-compiler">
+<main class="main-view hidden" id="view-compiler" role="tabpanel" aria-labelledby="tab-btn-compiler" tabindex="0">
   <div class="workspace">
 
     <!-- Center: search + matches -->
@@ -137,7 +138,7 @@
           </div>
           <button type="submit" class="btn btn-ghost">Search</button>
         </form>
-        <div style="font-size:9.5px;color:var(--text-muted);margin-bottom:10px;display:flex;gap:10px;">
+        <div style="font-size:10px;color:var(--text-muted);margin-bottom:10px;display:flex;gap:10px;">
           <span><kbd class="kbd-hint">/</kbd> to search</span>
           <span><kbd class="kbd-hint">Ctrl</kbd>+<kbd class="kbd-hint">Enter</kbd> to generate</span>
         </div>
@@ -181,6 +182,7 @@
       <div class="compiler-footer" id="compiler-footer">
         <div class="summary-box">
           <div class="summary-line"><span>Subtotal (Excl. VAT)</span><span id="summary-subtotal">0.00 AED</span></div>
+          <div class="summary-line hidden" id="summary-margin-row" title="Estimated gross margin on items that match a Catalog entry with a recorded cost. Items with no catalog match aren't counted."><span>Est. Margin</span><span id="summary-margin" style="color:var(--success);">0.00 AED</span></div>
           <div class="summary-line hidden" id="summary-discount-row"><span>Discount</span><span id="summary-discount" style="color:var(--danger);">0.00 AED</span></div>
           <div class="summary-line"><span>VAT 5%</span><span id="summary-vat">0.00 AED</span></div>
           <div class="summary-line total"><span>Grand Total</span><span id="summary-total">0.00 AED</span></div>
@@ -209,11 +211,35 @@
   </div>
 </main>
 
-<!-- Quotation History -->
-<main class="main-view hidden" id="view-history">
+<!-- Item Catalog -->
+<main class="main-view hidden" id="view-catalog" role="tabpanel" aria-labelledby="tab-btn-catalog" tabindex="0">
   <div class="panel" style="height:100%;">
     <div class="panel-header">
-      <div class="panel-title"><span class="icon" data-icon="history"></span><span>Client &amp; Quotation History</span></div>
+      <h2 class="panel-title"><span class="icon" data-icon="database"></span><span>Item Catalog</span></h2>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <div class="input-with-icon" style="width:220px;">
+          <span class="icon" data-icon="search"></span>
+          <input type="text" id="catalog-search" class="input" placeholder="Filter catalog..." oninput="filterCatalog()">
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="openCatalogItemModal()"><span class="icon icon-sm" data-icon="plus"></span> Add Item</button>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="history-table-wrap">
+        <table class="history-table">
+          <thead><tr><th>Description</th><th>Category</th><th>Unit</th><th>Rate</th><th>Cost</th><th>Margin</th><th>Actions</th></tr></thead>
+          <tbody id="catalog-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- Quotation History -->
+<main class="main-view hidden" id="view-history" role="tabpanel" aria-labelledby="tab-btn-history" tabindex="0">
+  <div class="panel" style="height:100%;">
+    <div class="panel-header">
+      <h2 class="panel-title"><span class="icon" data-icon="history"></span><span>Client &amp; Quotation History</span></h2>
       <div class="input-with-icon" style="width:260px;">
         <span class="icon" data-icon="search"></span>
         <input type="text" id="history-search" class="input" placeholder="Filter by client or venue..." oninput="filterHistory()">
@@ -222,15 +248,15 @@
     <div class="panel-body">
       <div class="history-toolbar">
         <div class="status-filter-row" id="status-filter-row">
-          <span class="status-filter-chip active" data-status="" onclick="setHistoryStatusFilter('')">All</span>
-          <span class="status-filter-chip" data-status="Sent" onclick="setHistoryStatusFilter('Sent')">Sent</span>
-          <span class="status-filter-chip" data-status="Won" onclick="setHistoryStatusFilter('Won')">Won</span>
-          <span class="status-filter-chip" data-status="Lost" onclick="setHistoryStatusFilter('Lost')">Lost</span>
+          <button type="button" class="status-filter-chip active" data-status="" onclick="setHistoryStatusFilter('')">All</button>
+          <button type="button" class="status-filter-chip" data-status="Sent" onclick="setHistoryStatusFilter('Sent')">Sent</button>
+          <button type="button" class="status-filter-chip" data-status="Won" onclick="setHistoryStatusFilter('Won')">Won</button>
+          <button type="button" class="status-filter-chip" data-status="Lost" onclick="setHistoryStatusFilter('Lost')">Lost</button>
         </div>
       </div>
       <div class="history-table-wrap">
         <table class="history-table">
-          <thead><tr><th>Ref</th><th>Client</th><th>Venue</th><th>Date</th><th>Valid Until</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Ref</th><th>Client</th><th>Venue</th><th>Date</th><th>Valid Until</th><th>Items</th><th>Grand Total</th><th>Status</th><th>Payment</th><th>Actions</th></tr></thead>
           <tbody id="history-table-body"></tbody>
         </table>
       </div>
@@ -239,13 +265,13 @@
 </main>
 
 <!-- Needs Review -->
-<main class="main-view hidden" id="view-review">
+<main class="main-view hidden" id="view-review" role="tabpanel" aria-labelledby="tab-btn-review" tabindex="0">
   <div class="panel" style="height:100%;">
     <div class="panel-header">
-      <div class="panel-title"><span class="icon" data-icon="alert"></span><span>Needs Review</span></div>
+      <h2 class="panel-title"><span class="icon" data-icon="alert"></span><span>Needs Review</span></h2>
     </div>
     <div style="padding:12px 15px 0;">
-      <p style="font-size:11.5px;color:var(--text-secondary);line-height:1.6;margin:0 0 12px;">
+      <p style="font-size:11px;color:var(--text-secondary);line-height:1.6;margin:0 0 12px;">
         When a folder is synced, every line item from your old quotes gets added to the price index the Smart Matcher
         searches. The ones below came through with something missing — <b>no price</b>, <b>no venue</b>, or figures that
         didn't add up — so they'd give you a bad suggestion later. Each card says what's wrong and which box to fill in.
@@ -269,10 +295,10 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Workspace Settings</div>
-      <span class="icon-btn" onclick="closeSettingsModal()"><span class="icon icon-sm" data-icon="close"></span></span>
+      <button type="button" class="icon-btn" onclick="closeSettingsModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body">
-      <label class="field-label">Drive Folder Path</label>
+      <label class="field-label" for="folder-path-input">Drive Folder Path</label>
       <div class="input-with-icon" style="margin-bottom:10px;">
         <span class="icon" data-icon="folder"></span>
         <input type="text" id="folder-path-input" class="input" value="G:\My Drive\BOOM TREE\ALL THE QUOTATIONS" placeholder="Folder path...">
@@ -290,14 +316,14 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title">Set Line Item Image</div>
-      <span class="icon-btn" style="cursor:pointer;" onclick="closeImagePicker()"><span class="icon icon-sm" data-icon="close"></span></span>
+      <button type="button" class="icon-btn" onclick="closeImagePicker()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body">
-      <div class="modal-tabs">
-        <div class="modal-tab active" id="img-tab-library" onclick="switchImagePickerTab('library')">From Library</div>
-        <div class="modal-tab" id="img-tab-search" onclick="switchImagePickerTab('search')">Web Search</div>
-        <div class="modal-tab" id="img-tab-url" onclick="switchImagePickerTab('url')">Paste URL</div>
-        <div class="modal-tab" id="img-tab-upload" onclick="switchImagePickerTab('upload')">Upload</div>
+      <div class="modal-tabs" role="tablist" aria-label="Image source">
+        <button type="button" class="modal-tab active" id="img-tab-library" role="tab" aria-selected="true" aria-controls="img-panel-library" onclick="switchImagePickerTab('library')">From Library</button>
+        <button type="button" class="modal-tab" id="img-tab-search" role="tab" aria-selected="false" aria-controls="img-panel-search" onclick="switchImagePickerTab('search')">Web Search</button>
+        <button type="button" class="modal-tab" id="img-tab-url" role="tab" aria-selected="false" aria-controls="img-panel-url" onclick="switchImagePickerTab('url')">Paste URL</button>
+        <button type="button" class="modal-tab" id="img-tab-upload" role="tab" aria-selected="false" aria-controls="img-panel-upload" onclick="switchImagePickerTab('upload')">Upload</button>
       </div>
 
       <div id="img-panel-library">
@@ -317,14 +343,14 @@
       </div>
 
       <div id="img-panel-url" class="hidden">
-        <label class="field-label">Image URL</label>
+        <label class="field-label" for="image-url-input">Image URL</label>
         <input type="text" id="image-url-input" class="input" placeholder="https://..." style="margin-bottom:10px;">
         <button class="btn btn-primary btn-block" onclick="pasteImageUrl()"><span class="icon icon-sm" data-icon="link"></span> Fetch Image</button>
       </div>
 
       <div id="img-panel-upload" class="hidden">
         <button class="btn btn-primary btn-block" onclick="uploadImageForItem()"><span class="icon icon-sm" data-icon="upload"></span> Choose File from Computer</button>
-        <p style="font-size:10.5px;color:var(--text-muted);margin-top:10px;">Fully offline — reads a local image file directly from disk.</p>
+        <p style="font-size:10px;color:var(--text-muted);margin-top:10px;">Fully offline — reads a local image file directly from disk.</p>
       </div>
     </div>
   </div>
@@ -335,7 +361,7 @@
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title"><span class="icon icon-sm" data-icon="check" style="color:var(--success);"></span> Quotation Generated</div>
-      <span class="icon-btn" style="cursor:pointer;" onclick="closeSuccessModal()"><span class="icon icon-sm" data-icon="close"></span></span>
+      <button type="button" class="icon-btn" onclick="closeSuccessModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body" id="success-modal-body"></div>
     <div class="modal-footer">
@@ -344,7 +370,44 @@
   </div>
 </div>
 
-<div class="toast-container" id="toast-container"></div>
+<!-- Client ledger modal -->
+<div class="modal-overlay" id="client-ledger-modal-overlay">
+  <div class="modal" style="width:560px;">
+    <div class="modal-header">
+      <div class="modal-title" id="client-ledger-modal-title">Client Ledger</div>
+      <button type="button" class="icon-btn" onclick="closeClientLedgerModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
+    </div>
+    <div class="modal-body" id="client-ledger-modal-body"></div>
+  </div>
+</div>
+
+<!-- Catalog item add/edit modal -->
+<div class="modal-overlay" id="catalog-item-modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="catalog-item-modal-title">Add Catalog Item</div>
+      <button type="button" class="icon-btn" onclick="closeCatalogItemModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label" for="catalog-desc-input">Description</label>
+      <input type="text" id="catalog-desc-input" class="input" placeholder="e.g. LED Wall 3x3m" style="margin-bottom:10px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div><label class="field-label" for="catalog-category-input">Category <span class="field-optional">optional</span></label><input type="text" id="catalog-category-input" class="input" placeholder="e.g. AV"></div>
+        <div><label class="field-label" for="catalog-unit-input">Unit</label><input type="text" id="catalog-unit-input" class="input" value="Pcs"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div><label class="field-label" for="catalog-rate-input">Rate (AED)</label><input type="number" min="0" step="0.01" id="catalog-rate-input" class="input" value="0"></div>
+        <div><label class="field-label" for="catalog-cost-input">Cost (AED) <span class="field-optional">optional</span></label><input type="number" min="0" step="0.01" id="catalog-cost-input" class="input"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-ghost" onclick="closeCatalogItemModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="catalog-save-btn" onclick="saveCatalogItem()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
 <script src="app.js"></script>
 </body>

@@ -1,3 +1,4 @@
+import hashlib
 import os
 import re
 import json
@@ -7,20 +8,29 @@ from pathlib import Path
 
 import numpy as np
 import chromadb
-from sentence_transformers import SentenceTransformer
 import webview
 
+import db
 import parsing
 import doc_generator
 import history_db
+import image_store
 import image_tools
+import logging_setup
+import maintenance
 import pdf_export
 import sharing
 import corrections_db
+import catalog_db
+from embedder import get_embedder
 
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
 COLLECTION_NAME = "quotation_items"
 PHOTO_COLLECTION_NAME = "photo_library"
+# Where a rebuild is assembled before it replaces the live index. See index_files.
+STAGING_COLLECTION_NAME = "quotation_items_staging"
+
+log = logging_setup.setup()
 
 # Cross-fill thresholds (cosine similarity on description embeddings). Above AUTO, two items
 # are effectively the same product quoted twice, so a photo from one is safe to reuse on the
@@ -28,6 +38,11 @@ PHOTO_COLLECTION_NAME = "photo_library"
 # flagged more softly. Below SUGGEST we leave the item without a photo rather than guess.
 CROSSFILL_AUTO = 0.82
 CROSSFILL_SUGGEST = 0.70
+
+# Cosine similarity a quote line must reach against a catalog title before its cost_price is
+# borrowed for margin reporting. Set high deliberately: a wrong cost produces a confident,
+# plausible-looking margin figure, which is worse than reporting no margin at all.
+COST_MATCH_MIN = 0.80
 
 # --- Sync scope --------------------------------------------------------------------
 # The sync folder used to be the whole Drive, which meant every scan parsed the owner's
@@ -50,23 +65,42 @@ _DEFAULT_SYNC_CONFIG = {
 }
 
 
+def _resolve_default_path(path_str):
+    if path_str and Path(path_str).exists():
+        return path_str
+    # Auto-detect macOS Google Drive paths or fallback to sample_quotes if configured path doesn't exist
+    home = Path.home()
+    mac_cloud = home / "Library" / "CloudStorage"
+    if mac_cloud.exists():
+        for d in mac_cloud.glob("GoogleDrive-*"):
+            target = d / "My Drive" / "BOOM TREE" / "ALL THE QUOTATIONS"
+            if target.exists():
+                return str(target)
+            target_gen = d / "My Drive"
+            if target_gen.exists():
+                return str(target_gen)
+    mac_gd = home / "Google Drive" / "My Drive"
+    if mac_gd.exists():
+        return str(mac_gd)
+    sample_dir = Path(__file__).resolve().parent / "sample_quotes"
+    if sample_dir.exists():
+        return str(sample_dir)
+    return str(Path(__file__).resolve().parent)
+
+
 def _load_sync_config():
+    cfg = dict(_DEFAULT_SYNC_CONFIG)
     try:
         if SYNC_CONFIG_PATH.exists():
             with open(SYNC_CONFIG_PATH, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if data.get("default_path"):
-                return {**_DEFAULT_SYNC_CONFIG, **data}
+                cfg = {**_DEFAULT_SYNC_CONFIG, **data}
     except Exception as e:
         print(f"Failed to load sync_config.json, using defaults: {e}")
 
-    try:
-        with open(SYNC_CONFIG_PATH, "w", encoding="utf-8") as f:
-            json.dump(_DEFAULT_SYNC_CONFIG, f, indent=2)
-    except Exception as e:
-        print(f"Could not write sync_config.json: {e}")
-
-    return _DEFAULT_SYNC_CONFIG
+    cfg["default_path"] = _resolve_default_path(cfg.get("default_path"))
+    return cfg
 
 
 SYNC_CONFIG = _load_sync_config()
@@ -141,6 +175,23 @@ def _is_generic_service(description):
     return bool(_GENERIC_SERVICE_RE.search(first_line))
 
 
+def _item_id(item):
+    """Stable identity for an indexed item: a hash of what it *is*.
+
+    IDs used to be `item_{position in the parse output}`, so `item_42` meant nothing more
+    than "the 42nd row of the last sync". The review queue hands these ids to the UI and
+    corrections write back to them, so re-syncing while that tab was open could land a PM's
+    edit on a completely different product. A content hash is the same for the same item
+    across every rebuild, and different for a different one.
+    """
+    key = "\x1f".join((
+        str(item.get('file_name', '')).strip().lower(),
+        str(item.get('original_description', '')).strip().lower(),
+        f"{float(item.get('historical_rate') or 0):.4f}",
+    ))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
 def crossfill_images(items, embeddings):
     """Fills in photos for items that have none by borrowing from the most similar item that
     does — the same product often appears with a photo in one quote and text-only in another.
@@ -155,13 +206,13 @@ def crossfill_images(items, embeddings):
     if emb.ndim != 2 or emb.shape[0] != len(items):
         return 0
 
-    have = [i for i, it in enumerate(items) if it.get("image_base64")]
+    have = [i for i, it in enumerate(items) if it.get("image_ref")]
     # A generic service line has no product to photograph, but its wording is close enough to
     # the same wording in another job for the embedding to score a confident match — which is
     # how "Delivery" ended up showing a photo lifted from a furniture quotation. Nothing here
     # can be illustrated by borrowing, so these are left without a photo on purpose.
     need = [i for i, it in enumerate(items)
-            if not it.get("image_base64") and not _is_generic_service(it.get("original_description", ""))]
+            if not it.get("image_ref") and not _is_generic_service(it.get("original_description", ""))]
     if not have or not need:
         return 0
 
@@ -170,14 +221,22 @@ def crossfill_images(items, embeddings):
     have_mat = unit[have]
 
     filled = 0
-    for i in need:
-        sims = have_mat @ unit[i]
+    # Apple's Accelerate BLAS (numpy 2.x on macOS) leaves floating-point status flags set in
+    # unused SIMD lanes, so every one of these matmuls raises divide-by-zero/overflow/invalid
+    # warnings on otherwise clean unit vectors. Verified against a float64 einsum over the
+    # live 351-item index: results agree to 3.5e-08 and pick the same argmax. Silenced here
+    # rather than left to fill the log, which only teaches people to ignore warnings.
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        sims_all = have_mat @ unit[need].T
+
+    for column, i in enumerate(need):
+        sims = sims_all[:, column]
         best = int(np.argmax(sims))
         score = float(sims[best])
         if score < CROSSFILL_SUGGEST:
             continue
         source_item = items[have[best]]
-        items[i]["image_base64"] = source_item["image_base64"]
+        items[i]["image_ref"] = source_item["image_ref"]
         prefix = "matched" if score >= CROSSFILL_AUTO else "suggested"
         items[i]["image_source"] = f"{prefix} from {source_item.get('file_name', 'another quote')}"
         filled += 1
@@ -194,12 +253,12 @@ class QuotationApi:
         # Grows organically as PMs save photos while quoting, instead of needing a bulk upload.
         self.photo_collection = self.client.get_or_create_collection(name=PHOTO_COLLECTION_NAME)
         self.sync_path = SYNC_CONFIG["default_path"]
+        self._catalog_cache = None
 
     def _get_model(self):
-        """Lazy loads sentence-transformers model to save initial window boot time."""
+        """Lazy loads the embedding model to save initial window boot time."""
         if self.model is None:
-            print("Loading sentence-transformers model (all-MiniLM-L6-v2)...")
-            self.model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.model = get_embedder()
         return self.model
 
     # --- Status / analytics -------------------------------------------------
@@ -272,6 +331,70 @@ class QuotationApi:
 
     # --- Indexing / search ----------------------------------------------------
 
+    def _write_staging(self, ids, embeddings, metadatas, documents, batch_size=500):
+        """Loads a freshly parsed index into a scratch collection, leaving the live one alone.
+
+        Batched because Chroma materializes the whole call in memory, and a large archive can
+        run to several thousand items.
+        """
+        try:
+            self.client.delete_collection(name=STAGING_COLLECTION_NAME)
+        except Exception:
+            pass  # No staging collection left over from a previous run — the normal case.
+
+        staging = self.client.get_or_create_collection(name=STAGING_COLLECTION_NAME)
+        for start in range(0, len(ids), batch_size):
+            stop = start + batch_size
+            staging.add(
+                ids=ids[start:stop],
+                embeddings=embeddings[start:stop],
+                metadatas=metadatas[start:stop],
+                documents=documents[start:stop],
+            )
+        return staging
+
+    def _promote_staging(self, expected):
+        """Swaps the staged index in for the live one, once it is known to be complete.
+
+        The count check is the whole point: promoting is the only destructive step, and it
+        only happens after the replacement has been verified to hold every item. A failure
+        anywhere earlier leaves the previous index serving queries untouched.
+        """
+        staging = self.client.get_or_create_collection(name=STAGING_COLLECTION_NAME)
+        actual = staging.count()
+        if actual != expected:
+            raise RuntimeError(
+                f"Refusing to promote a partial index: staged {actual} of {expected} items. "
+                f"The existing index has been left in place."
+            )
+
+        db.backup(history_db.DB_FILE, tag="preindex")
+        try:
+            self.client.delete_collection(name=COLLECTION_NAME)
+        except Exception:
+            pass
+        # Chroma has no rename, so the staged data is copied across in one pass and the
+        # scratch collection dropped. Reads go through `self.collection`, which is only
+        # repointed once the new collection is fully populated.
+        staged = staging.get(include=["metadatas", "documents", "embeddings"])
+        fresh = self.client.get_or_create_collection(name=COLLECTION_NAME)
+        ids = staged["ids"]
+        for start in range(0, len(ids), 500):
+            stop = start + 500
+            fresh.add(
+                ids=ids[start:stop],
+                embeddings=[list(e) for e in staged["embeddings"][start:stop]],
+                metadatas=staged["metadatas"][start:stop],
+                documents=staged["documents"][start:stop],
+            )
+        self.collection = fresh
+        try:
+            self.client.delete_collection(name=STAGING_COLLECTION_NAME)
+        except Exception:
+            pass
+        log.info("Promoted new index: %s items", actual)
+        return actual
+
     def index_files(self, path):
         path_obj = Path(path)
         if not path_obj.exists() or not path_obj.is_dir():
@@ -326,12 +449,6 @@ class QuotationApi:
             for file_path in word_files:
                 all_items.extend(parsing.parse_docx_file(file_path))
 
-            try:
-                self.client.delete_collection(name=COLLECTION_NAME)
-            except Exception:
-                pass
-            self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME)
-
             seen, unique_items = set(), []
             for item in all_items:
                 key = (item['original_description'].lower().strip(), item['historical_rate'])
@@ -339,23 +456,18 @@ class QuotationApi:
                     seen.add(key)
                     unique_items.append(item)
 
-            # Re-apply any prior PM corrections from the Needs Review queue, so a fix made once
-            # survives future re-syncs of the same source files instead of getting overwritten.
+            # Re-apply prior PM corrections, but only the fields the PM actually edited.
+            # Snapshotting all three fields is what used to freeze an item's price the moment
+            # anyone set its venue in bulk or dismissed its review flag — after which a price
+            # change in the source spreadsheet could never reach the app again.
             all_corrections = corrections_db.get_all_corrections()
+            reapplied = 0
             for item in unique_items:
                 key = (str(item['file_name']).strip(), item['original_description'].strip().lower())
                 fix = all_corrections.get(key)
                 if fix:
-                    if fix.get("rate") is not None:
-                        item['historical_rate'] = float(fix["rate"])
-                    if fix.get("unit"):
-                        item['unit'] = fix["unit"]
-                    if fix.get("venue"):
-                        item['venue'] = fix["venue"]
-                    item['rate_confidence'] = "high"
-                    item['venue_confidence'] = "high"
-                    item['needs_review'] = False
-                    item['flag_reason'] = "corrected by PM"
+                    corrections_db.apply_correction(item, fix)
+                    reapplied += 1
 
             if not unique_items:
                 return {
@@ -372,8 +484,16 @@ class QuotationApi:
             crossfilled = crossfill_images(unique_items, computed_embeddings)
 
             ids, documents, embeddings, metadatas = [], [], [], []
+            used_ids = set()
             for idx, item in enumerate(unique_items):
-                ids.append(f"item_{idx}")
+                item_id = _item_id(item)
+                # Content-hash collisions mean two rows really are the same item; keep the
+                # first and let the suffix disambiguate rather than silently dropping one.
+                if item_id in used_ids:
+                    item_id = f"{item_id}_{idx}"
+                used_ids.add(item_id)
+
+                ids.append(item_id)
                 documents.append(item['original_description'])
                 embeddings.append(computed_embeddings[idx].tolist())
                 metadatas.append({
@@ -383,7 +503,10 @@ class QuotationApi:
                     'quote_date': str(item['quote_date']),
                     'venue': str(item.get('venue', 'Venue Unspecified')),
                     'file_name': str(item['file_name']),
-                    'image_base64': str(item['image_base64']),
+                    # A 64-character hash into the image store, never image bytes. Chroma keeps
+                    # a B-tree index over metadata string values, so a blob here costs three
+                    # copies on disk and is loaded into memory by every unprojected read.
+                    'image_ref': str(item.get('image_ref') or ''),
                     'image_source': str(item.get('image_source', '')),
                     'rate_confidence': str(item.get('rate_confidence', 'medium')),
                     'venue_confidence': str(item.get('venue_confidence', 'medium')),
@@ -391,9 +514,14 @@ class QuotationApi:
                     'flag_reason': str(item.get('flag_reason', '')),
                 })
 
-            self.collection.add(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
+            # Build into staging, verify, then swap. The previous order deleted the live
+            # collection *before* loading the model and computing embeddings, so any failure
+            # in between — an OOM on a large archive, a missing model, the window being closed
+            # — left the business with an empty price library and no backup.
+            self._write_staging(ids, embeddings, metadatas, documents)
+            self._promote_staging(expected=len(ids))
 
-            own = sum(1 for it in unique_items if it.get('image_base64') and not str(it.get('image_source', '')).startswith(('matched', 'suggested')))
+            own = sum(1 for it in unique_items if it.get('image_ref') and not str(it.get('image_source', '')).startswith(('matched', 'suggested')))
             message = (f"Indexing complete: {len(unique_items)} items indexed "
                        f"({own} with their own photo, {crossfilled} matched from other quotes).")
             # Anything not scanned is stated outright. Silently skipping files is exactly how
@@ -454,7 +582,11 @@ class QuotationApi:
                         'elapsed_years': elapsed_years,
                         'similarity': similarity_pct,
                         'file_name': metadata.get('file_name', ''),
-                        'image_base64': metadata.get('image_base64', ''),
+                        # The ref identifies the photo; the src is what the <img> tag loads.
+                        # Sending base64 here meant every keystroke in the search box pushed
+                        # roughly 800 KB of image data across the pywebview bridge.
+                        'image_ref': metadata.get('image_ref', ''),
+                        'image_src': image_store.web_src(metadata.get('image_ref', '')),
                         'image_source': metadata.get('image_source', ''),
                     })
 
@@ -519,16 +651,26 @@ class QuotationApi:
                 return {"success": False, "error": "Item not found in index."}
 
             meta = dict(existing["metadatas"][0])
+            # Only the fields the PM actually filled in are recorded as corrections. The rest
+            # keep re-parsing from source on every sync, which is what lets a price update in
+            # the original spreadsheet still reach the app.
+            edited = []
             if rate is not None and str(rate).strip() != "":
                 meta["historical_rate"] = float(rate)
+                meta["rate_confidence"] = "high"
+                edited.append("rate")
             if unit:
                 meta["unit"] = str(unit)
+                edited.append("unit")
             if venue:
                 meta["venue"] = str(venue)
-            meta["rate_confidence"] = "high"
-            meta["venue_confidence"] = "high"
+                meta["venue_confidence"] = "high"
+                edited.append("venue")
+
             meta["needs_review"] = False
-            meta["flag_reason"] = "corrected by PM"
+            meta["flag_reason"] = (
+                "corrected by PM: " + ", ".join(edited) if edited else "reviewed by PM - left as-is"
+            )
 
             self.collection.update(ids=[item_id], metadatas=[meta])
 
@@ -538,11 +680,12 @@ class QuotationApi:
                 rate=meta.get("historical_rate"),
                 unit=meta.get("unit"),
                 venue=meta.get("venue"),
+                corrected_fields=edited,
             )
 
-            return {"success": True}
+            return {"success": True, "corrected_fields": edited}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Saving the correction", e)
 
     def bulk_set_venue_for_file(self, file_name, venue):
         """Applies one venue to every indexed item from a given source file.
@@ -577,17 +720,19 @@ class QuotationApi:
             self.collection.update(ids=ids_to_update, metadatas=metas_to_update)
 
             for meta in metas_to_update:
+                # Venue only. This call used to persist the rate alongside it, which pinned
+                # the price of every line in the file to whatever had been parsed that day —
+                # a venue correction silently froze the whole document's pricing.
                 corrections_db.save_correction(
                     file_name=meta.get("file_name", ""),
                     original_description=meta.get("original_description", ""),
-                    rate=meta.get("historical_rate"),
-                    unit=meta.get("unit"),
                     venue=venue,
+                    corrected_fields=["venue"],
                 )
 
             return {"success": True, "updated": len(ids_to_update)}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Setting the venue for this file", e)
 
     def dismiss_review_item(self, item_id):
         """Lighter-weight than save_correction: clears the review flag on an item the PM has
@@ -603,16 +748,21 @@ class QuotationApi:
             meta["flag_reason"] = "dismissed by PM - left as-is"
             self.collection.update(ids=[item_id], metadatas=[meta])
 
+            # An empty field list is the point: this records "a human looked and left it
+            # alone", so the item stops being re-flagged without any of its parsed values
+            # being pinned. Previously a dismissal snapshotted all three fields, which froze
+            # the item's rate — including freezing a rate of 0 on genuinely broken rows.
             corrections_db.save_correction(
                 file_name=meta.get("file_name", ""),
                 original_description=meta.get("original_description", ""),
                 rate=meta.get("historical_rate"),
                 unit=meta.get("unit"),
                 venue=meta.get("venue"),
+                corrected_fields=[],
             )
             return {"success": True}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Dismissing this review item", e)
 
     # --- Quotation generation -------------------------------------------------
 
@@ -633,10 +783,12 @@ class QuotationApi:
             validity_days = payload.get("validity_days")
             valid_until = doc_generator.compute_valid_until(quote_date, validity_days)
 
-            # Reserved up front so the printed reference on the document matches the history
-            # record, which can only be written after the files exist.
-            reserved_id = history_db.peek_next_quotation_id()
-            quote_ref = f"Q-{reserved_id}"
+            # Allocated from a counter that only moves forward, so the reference printed on
+            # the document is owned by this quote before any file is written. The old scheme
+            # read MAX(id)+1, which meant deleting the most recent quote made the next one
+            # reuse its number — two different documents both labelled Q-7 in a client's
+            # inbox. A gap in the sequence is invisible to clients; a collision is not.
+            quote_ref = history_db.allocate_quote_number()
 
             meta = {
                 "client_name": client_name, "venue": venue, "quote_date": quote_date,
@@ -691,20 +843,24 @@ class QuotationApi:
             elif pdf_source:
                 pdf_export.open_file(str(pdf_source))
 
+            # Cost is looked up for the history record only, never handed to doc_generator —
+            # it must never appear on a document the client receives.
+            items_with_cost = self._attach_costs(items)
+
             history_id = history_db.save_quotation_history({
                 "client_name": client_name, "client_phone": client_phone, "venue": venue,
-                "quote_date": quote_date, "items": items,
+                "quote_date": quote_date, "items": items_with_cost,
                 "discount_type": discount_type, "discount_value": discount_value,
                 "subtotal": totals["subtotal"], "vat": totals["vat"], "grand_total": totals["grand_total"],
                 "xlsx_path": str(xlsx_path.resolve()) if xlsx_path else "",
                 "docx_path": str(docx_path.resolve()) if docx_path else "",
                 "pdf_path": pdf_path or "",
                 "valid_until": valid_until,
+                "quote_number": quote_ref,
             })
 
-            quote_ref = f"Q-{history_id}"
-            if history_id != reserved_id:
-                print(f"Quote ref drift: document printed {reserved_id}, history row is {history_id}.")
+            log.info("Compiled %s for %s (history id %s, total %.2f)",
+                     quote_ref, client_name, history_id, totals["grand_total"])
             whatsapp_link = sharing.build_whatsapp_link(client_name, quote_ref, totals["grand_total"], items, client_phone)
             mailto_link = sharing.build_mailto_link(
                 client_name, quote_ref, totals["grand_total"], items,
@@ -714,6 +870,7 @@ class QuotationApi:
             return {
                 "success": True,
                 "history_id": history_id,
+                "quote_ref": quote_ref,
                 "image_failures": len(doc_generator.IMAGE_FAILURES),
                 "xlsx_path": str(xlsx_path.resolve()) if xlsx_path else "",
                 "docx_path": str(docx_path.resolve()) if docx_path else "",
@@ -728,13 +885,98 @@ class QuotationApi:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    # --- Catalog cost matching ----------------------------------------------------
+
+    def _catalog_embeddings(self):
+        """Embeddings for every catalog title, cached until the catalog changes.
+
+        Keyed on the row ids and their update timestamps, so editing an item's description
+        invalidates the cache without needing an explicit signal from the UI.
+        """
+        items = catalog_db.get_catalog_items()
+        if not items:
+            self._catalog_cache = None
+            return None
+
+        signature = tuple((it["id"], it.get("updated_at")) for it in items)
+        if self._catalog_cache and self._catalog_cache["signature"] == signature:
+            return self._catalog_cache
+
+        titles = [catalog_db.title_line(it["description"]) or it["description"] for it in items]
+        vectors = np.asarray(self._get_model().encode(titles), dtype=np.float32)
+        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        self._catalog_cache = {
+            "signature": signature,
+            "items": items,
+            "unit": vectors / np.clip(norms, 1e-9, None),
+        }
+        return self._catalog_cache
+
+    def _attach_costs(self, items):
+        """Enriches draft line items with the cost_price behind each one, for margin reporting.
+
+        Cost lookup used to be an exact string equality test against the catalog description.
+        Quote lines are multi-line free text, so it essentially never matched and every quote
+        recorded cost_price: None — margin reporting had no data at all. Deterministic
+        matching (exact, title line, containment) runs first; anything still unmatched falls
+        back to a semantic match against catalog titles, which is what handles the wording
+        drift between a catalog entry and how it gets written on a quote.
+        """
+        enriched_items = []
+        unresolved = []
+
+        for idx, it in enumerate(items):
+            enriched = dict(it)
+            match = catalog_db.find_catalog_item_by_description(it.get("description", ""))
+            if match:
+                enriched["cost_price"] = match["cost_price"]
+                enriched["cost_source"] = match["match"]
+            else:
+                enriched["cost_price"] = None
+                enriched["cost_source"] = ""
+                unresolved.append(idx)
+            enriched_items.append(enriched)
+
+        if unresolved:
+            try:
+                cache = self._catalog_embeddings()
+            except Exception as e:
+                log.warning("Semantic cost matching unavailable: %s", e)
+                cache = None
+
+            if cache:
+                queries = [
+                    catalog_db.title_line(enriched_items[i].get("description", ""))
+                    or enriched_items[i].get("description", "")
+                    for i in unresolved
+                ]
+                vectors = np.asarray(self._get_model().encode(queries), dtype=np.float32)
+                if vectors.ndim == 1:
+                    vectors = vectors[None, :]
+                norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+                unit = vectors / np.clip(norms, 1e-9, None)
+
+                # See crossfill_images for why the FP warnings are silenced.
+                with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+                    all_sims = cache["unit"] @ unit.T
+
+                for slot, item_idx in enumerate(unresolved):
+                    sims = all_sims[:, slot]
+                    best = int(np.argmax(sims))
+                    if float(sims[best]) >= COST_MATCH_MIN:
+                        row = cache["items"][best]
+                        enriched_items[item_idx]["cost_price"] = row["cost_price"]
+                        enriched_items[item_idx]["cost_source"] = f"semantic {float(sims[best]):.0%}"
+
+        return enriched_items
+
     # --- Images ------------------------------------------------------------------
 
     def fetch_image_suggestions(self, query):
         return image_tools.fetch_image_suggestions(query)
 
     def fetch_image_from_url(self, url):
-        return image_tools.fetch_image_as_base64(url)
+        return image_tools.fetch_image_from_url(url)
 
     def upload_image_dialog(self):
         try:
@@ -744,9 +986,9 @@ class QuotationApi:
             )
             if not result:
                 return {"success": False, "error": "No file selected."}
-            return image_tools.bytes_from_local_file(result[0])
+            return image_tools.import_local_file(result[0])
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Importing that image", e)
 
     # --- Photo library -----------------------------------------------------------
     # A small, growing bank of real product photos separate from historical pricing data.
@@ -754,29 +996,38 @@ class QuotationApi:
     # draft item can be saved here with one click; future items with a similar description
     # then surface it automatically via the same semantic matching used for price search.
 
-    def save_photo_to_library(self, description, image_base64):
+    def save_photo_to_library(self, description, image_value):
+        """Saves a photo under a description. `image_value` may be a ref or a data URI —
+        the frontend passes whichever it holds and `ingest` normalizes both to a ref."""
         try:
             description = (description or "").strip()
-            if not description or not image_base64:
+            if not description or not image_value:
                 return {"success": False, "error": "Need both a description and an image to save."}
 
-            model = self._get_model()
-            embedding = model.encode(description).tolist()
-            photo_id = f"photo_{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+            image_ref = image_store.ingest(image_value)
+            if not image_ref:
+                return {"success": False, "error": "That image could not be read."}
 
-            self.photo_collection.add(
+            model = self._get_model()
+            embedding = np.asarray(model.encode(description), dtype=np.float32).tolist()
+            # The photo's own hash is its id, so saving the same picture twice updates one
+            # entry rather than filling the library with duplicates.
+            photo_id = f"photo_{image_ref[:32]}"
+
+            self.photo_collection.upsert(
                 ids=[photo_id],
                 embeddings=[embedding],
                 documents=[description],
                 metadatas=[{
                     "description": description,
-                    "image_base64": image_base64,
+                    "image_ref": image_ref,
                     "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }],
             )
-            return {"success": True, "id": photo_id}
+            return {"success": True, "id": photo_id, "image_ref": image_ref,
+                    "image_src": image_store.web_src(image_ref)}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Saving that photo to the library", e)
 
     def search_photo_library(self, query, n_results=6):
         try:
@@ -795,15 +1046,17 @@ class QuotationApi:
                 for idx, photo_id in enumerate(results["ids"][0]):
                     metadata = results["metadatas"][0][idx]
                     distance = results["distances"][0][idx]
+                    ref = metadata.get("image_ref", "") or metadata.get("image_base64", "")
                     matches.append({
                         "id": photo_id,
                         "description": metadata.get("description", ""),
-                        "image_base64": metadata.get("image_base64", ""),
+                        "image_ref": ref if image_store.is_ref(ref) else "",
+                        "image_src": image_store.web_src(ref),
                         "similarity": _distance_to_similarity(distance),
                     })
             return {"success": True, "matches": matches}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Searching the photo library", e)
 
     def delete_photo_from_library(self, photo_id):
         try:
@@ -873,9 +1126,17 @@ class QuotationApi:
             item = history_db.get_quotation_by_id(history_id)
             if not item:
                 return {"success": False, "error": "Quotation not found."}
+            # Attach a renderable URL per line so reopening a quote shows its photos. Records
+            # written before the image store hold an inline data URI, which web_src passes
+            # through unchanged — so old quotes still render without a migration.
+            for line in item.get("items", []):
+                if isinstance(line, dict):
+                    line["image_src"] = image_store.web_src(
+                        line.get("image_ref") or line.get("image_base64") or ""
+                    )
             return {"success": True, "item": item}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return logging_setup.report("Loading that quotation", e)
 
     def delete_history_item(self, history_id):
         try:
@@ -891,11 +1152,159 @@ class QuotationApi:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    def update_payment(self, history_id, payment_status, amount_paid):
+        try:
+            history_db.update_payment(history_id, payment_status, amount_paid)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_client_ledger(self, client_name, client_phone=None, client_id=None):
+        try:
+            return {"success": True,
+                    "ledger": history_db.get_client_ledger(client_name, client_phone, client_id)}
+        except Exception as e:
+            return logging_setup.report("Loading the client ledger", e)
+
+    # --- Clients -------------------------------------------------------------------
+
+    def get_clients(self):
+        try:
+            return {"success": True, "clients": history_db.get_clients()}
+        except Exception as e:
+            return logging_setup.report("Loading clients", e)
+
+    def update_client(self, client_id, name=None, phone=None, email=None, notes=None):
+        try:
+            history_db.update_client(client_id, name=name, phone=phone, email=email, notes=notes)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Updating the client", e)
+
+    def merge_clients(self, source_id, target_id):
+        """Folds one client record into another, moving their quotes across. This is the
+        repair path for the same company having been typed two different ways."""
+        try:
+            moved = history_db.merge_clients(source_id, target_id)
+            return {"success": True, "quotes_moved": moved}
+        except Exception as e:
+            return logging_setup.report("Merging those clients", e)
+
+    def find_duplicate_clients(self):
+        try:
+            return {"success": True, "groups": history_db.find_duplicate_clients()}
+        except Exception as e:
+            return logging_setup.report("Looking for duplicate clients", e)
+
+    # --- Corrections management ------------------------------------------------------
+
+    def list_corrections(self, limit=500):
+        """Every stored correction. Without a way to see these, a bad correction could only be
+        undone by hand-editing SQLite — and it would keep re-applying on every sync."""
+        try:
+            return {"success": True, "items": corrections_db.list_corrections(limit)}
+        except Exception as e:
+            return logging_setup.report("Loading corrections", e)
+
+    def delete_correction(self, file_name, original_description):
+        try:
+            removed = corrections_db.delete_correction(file_name, original_description)
+            return {"success": True, "removed": removed}
+        except Exception as e:
+            return logging_setup.report("Deleting the correction", e)
+
+    # --- Maintenance -----------------------------------------------------------------
+
+    def get_storage_report(self):
+        """What the app is using on disk, and how much of it is reclaimable."""
+        try:
+            chroma_bytes = maintenance.CHROMA_SQLITE.stat().st_size if maintenance.CHROMA_SQLITE.exists() else 0
+            return {
+                "success": True,
+                "report": {
+                    "images": image_store.stats(),
+                    "chroma_bytes": chroma_bytes,
+                    "databases": {
+                        Path(p).name: (Path(p).stat().st_size if Path(p).exists() else 0)
+                        for p in maintenance.DATABASES
+                    },
+                    "backups": len(db.list_backups()),
+                },
+            }
+        except Exception as e:
+            return logging_setup.report("Reading the storage report", e)
+
+    def _live_image_refs(self):
+        """Every image ref still cited by the index, the photo library, or a saved quotation."""
+        refs = set(history_db.all_image_refs())
+        for collection in (self.collection, self.photo_collection):
+            try:
+                data = collection.get(include=["metadatas"])
+            except Exception:
+                continue
+            for meta in (data.get("metadatas") or []):
+                ref = (meta or {}).get("image_ref")
+                if ref:
+                    refs.add(ref)
+        return refs
+
+    def run_maintenance(self, remove_orphans=False):
+        """Backs up, purges Chroma's write log, vacuums, and optionally sweeps orphan photos."""
+        try:
+            summary = maintenance.run_all(
+                live_refs=self._live_image_refs(), remove_orphans=bool(remove_orphans)
+            )
+            return {"success": True, "summary": summary}
+        except Exception as e:
+            return logging_setup.report("Running maintenance", e)
+
+    def get_margin_summary(self, period_days=30):
+        try:
+            return {"success": True, "summary": history_db.get_margin_summary(period_days)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # --- Item Catalog --------------------------------------------------------------
+
+    def get_catalog_items(self):
+        try:
+            return {"success": True, "items": catalog_db.get_catalog_items()}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def save_catalog_item(self, item):
+        try:
+            description = (item.get("description") or "").strip()
+            if not description:
+                return {"success": False, "error": "Description is required."}
+            item_id = item.get("id")
+            if item_id:
+                catalog_db.update_catalog_item(
+                    item_id, description=description, unit=item.get("unit"),
+                    rate=item.get("rate"), cost_price=item.get("cost_price"),
+                    category=item.get("category"),
+                )
+                return {"success": True, "id": item_id}
+            new_id = catalog_db.add_catalog_item(
+                description, unit=item.get("unit") or "Pcs", rate=item.get("rate") or 0,
+                cost_price=item.get("cost_price"), category=item.get("category"),
+            )
+            return {"success": True, "id": new_id}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def delete_catalog_item(self, item_id):
+        try:
+            catalog_db.delete_catalog_item(item_id)
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
 
 def main():
     api = QuotationApi()
     company_name = doc_generator.COMPANY.get("name", "Company")
-    window = webview.create_window(
+    webview.create_window(
         f'{company_name.title()} Smart Quotation Engine',
         'index.html',
         js_api=api,
@@ -904,7 +1313,13 @@ def main():
         resizable=True,
         background_color='#0a0a0b'
     )
-    webview.start(debug=True)
+    # Devtools are opt-in via QE_DEBUG=1 rather than always on: a shipped build should not
+    # hand end users an inspector over the app's own data.
+    debug = os.environ.get("QE_DEBUG", "").lower() in ("1", "true", "yes")
+    # http_server serves this directory over localhost, which is what lets the page load
+    # product photos with a plain relative <img src="images/..."> instead of receiving
+    # megabytes of base64 through the JS bridge.
+    webview.start(debug=debug, http_server=True)
 
 
 if __name__ == '__main__':
