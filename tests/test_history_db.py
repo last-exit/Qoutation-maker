@@ -158,13 +158,21 @@ def test_margin_ignores_quotes_that_were_not_won(temp_history):
 
 # --- History listing ------------------------------------------------------------------
 
-def test_history_list_omits_line_items_by_default(temp_history):
-    """The list only renders client, date and total; deserializing every line item of 200
-    quotes to show that was the most expensive call in the app."""
-    temp_history.save_quotation_history(quote())
+def test_history_list_omits_line_items_but_keeps_the_count(temp_history):
+    """The list renders client, date, total and a line count. Omitting `items` without also
+    providing `item_count` broke the whole table: the UI read `.length` off undefined."""
+    temp_history.save_quotation_history({
+        **quote(),
+        "items": [{"description": "A", "qty": 1, "rate": 1.0},
+                  {"description": "B", "qty": 2, "rate": 2.0}],
+    })
     rows = temp_history.get_quotation_history()
-    assert "items" not in rows[0]
-    assert "items" in temp_history.get_quotation_history(include_items=True)[0]
+    assert "items" not in rows[0], "line items are too expensive to ship for a list view"
+    assert rows[0]["item_count"] == 2, "the count the table renders must always be present"
+
+    detailed = temp_history.get_quotation_history(include_items=True)[0]
+    assert len(detailed["items"]) == 2
+    assert detailed["item_count"] == 2
 
 
 def test_image_refs_are_collected_for_orphan_protection(temp_history):

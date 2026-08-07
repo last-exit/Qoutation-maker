@@ -506,11 +506,16 @@ def update_payment(quotation_id, payment_status, amount_paid):
 def _row_to_quote(row, include_items=True):
     d = dict(row)
     raw = d.pop("items_json", None)
+    try:
+        parsed = json.loads(raw) if raw else []
+    except Exception:
+        parsed = []
+    # `item_count` is always present, even when the line items themselves are omitted. The
+    # history table shows a per-quote line count, and dropping `items` without providing a
+    # count left the UI reading `.length` off undefined, which broke the whole table.
+    d["item_count"] = len(parsed)
     if include_items:
-        try:
-            d["items"] = json.loads(raw) if raw else []
-        except Exception:
-            d["items"] = []
+        d["items"] = parsed
     return d
 
 

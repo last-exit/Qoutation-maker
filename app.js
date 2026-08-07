@@ -1312,7 +1312,7 @@ function renderHistoryTable(items) {
         <td><span class="chip chip-muted">${icon('pin', 'icon-sm')} ${esc(q.venue || '-')}</span></td>
         <td>${esc(q.quote_date)}</td>
         <td>${esc(q.valid_until || '-')}</td>
-        <td>${q.items.length}</td>
+        <td>${q.item_count}</td>
         <td class="num num-strong">${money(q.grand_total)} AED</td>
         <td>${statusPillHtml(q.id, q.status)}</td>
         <td>${paymentCellHtml(q)}</td>
