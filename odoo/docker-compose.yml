@@ -60,6 +60,9 @@ services:
       # copying it in means re-indexing always reads current files, and the archive can
       # live on a local disk, an external drive or a NAS share without a code change.
       - ${ARCHIVE_PATH:?set ARCHIVE_PATH in odoo/.env}:/mnt/archive:ro
+      # The desktop app's SQLite stores, read-only, for the one-time data import.
+      # Safe to remove from this file once the import has been run.
+      - ${LEGACY_PATH:-/dev/null}:/mnt/legacy:ro
     restart: unless-stopped
 
 volumes:

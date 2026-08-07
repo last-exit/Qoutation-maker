@@ -57,6 +57,13 @@ class ArchiveItem(models.Model):
     )
     source_name = fields.Char(related="source_id.name", store=True, string="Source File")
 
+    # Set the first time this item is quoted from. Lets a product show the spread of what it
+    # has historically sold for, which is the number a PM actually needs when defending a
+    # price rather than a single list price.
+    product_id = fields.Many2one(
+        "product.template", string="Product", ondelete="set null", index=True, copy=False,
+    )
+
     # --- Photo ------------------------------------------------------------------------
     # Extracted from the source document and stored as a standard Odoo attachment, so it gets
     # the filestore, access rules and web routes for free rather than sitting as base64 in a
@@ -230,6 +237,42 @@ class ArchiveItem(models.Model):
                 "has_photo": bool(item.image_hash),
             })
         return results
+
+    def _get_or_create_product(self):
+        """The product a quotation line for this item should point at.
+
+        Odoo requires a product on a sale line, but a bespoke builder has no catalogue to
+        pick from — every structure is one-off. Rather than forcing everything onto a single
+        "Custom Item" placeholder (which makes reporting by product meaningless) or minting a
+        product per archive row (which fills the catalogue with 464 near-duplicates), products
+        are keyed on the item's *title*. The same structure quoted across five jobs
+        consolidates to one product, and a real catalogue accumulates as a by-product of
+        quoting.
+
+        Created as goods rather than a service — these are physical structures. Stock
+        tracking is deliberately not set here: `is_storable` only exists once the Inventory
+        module is installed, and a built-to-order structure is never picked from stock anyway.
+        """
+        self.ensure_one()
+        title = (self.title or self.name or "Custom Item").strip()[:200]
+
+        Product = self.env["product.product"]
+        existing = Product.search([("archive_title_key", "=", title.lower())], limit=1)
+        if existing:
+            self.product_id = existing.product_tmpl_id
+            return existing
+
+        product = Product.create({
+            "name": title,
+            "archive_title_key": title.lower(),
+            "type": "consu",
+            "list_price": self.rate,
+            "sale_ok": True,
+            "purchase_ok": True,
+            "uom_id": self.env.ref("uom.product_uom_unit").id,
+        })
+        self.product_id = product.product_tmpl_id
+        return product
 
     def action_view_source(self):
         """Opens the original quotation this line was read out of, so a PM can see the row in

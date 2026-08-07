@@ -32,13 +32,18 @@ What it adds:
     "category": "Sales/Sales",
     "license": "LGPL-3",
     # sale_management brings quotations; product is where catalog cost/list prices live.
-    "depends": ["base", "sale_management", "product"],
+    # purchase and hr_timesheet bring the cost side of job costing; analytic
+    # accounts are what tie a purchase or a crew hour back to the job it was for.
+    "depends": ["base", "sale_management", "product", "purchase", "project",
+                "hr_timesheet", "analytic"],
     "data": [
         "security/redcube_security.xml",
         "security/ir.model.access.csv",
         "views/archive_item_views.xml",
         "views/archive_source_views.xml",
         "views/wizard_views.xml",
+        "views/sale_order_views.xml",
+        "views/job_costing_views.xml",
         "views/menus.xml",
     ],
     "installable": True,

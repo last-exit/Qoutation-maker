@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_archive_pick_wizard_form" model="ir.ui.view">
+        <field name="name">redcube.archive.pick.wizard.form</field>
+        <field name="model">redcube.archive.pick.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Price from Archive">
+                <field name="order_id" invisible="1"/>
+                <field name="searched" invisible="1"/>
+                <group>
+                    <group>
+                        <field name="query" placeholder="e.g. play tower with slide and rockwall"/>
+                        <field name="only_with_photo"/>
+                    </group>
+                    <group>
+                        <field name="markup_rate" widget="percentage"/>
+                        <field name="limit"/>
+                    </group>
+                </group>
+                <div class="text-muted" invisible="searched">
+                    <p>Describe the structure the way you would to a colleague. This matches on
+                       meaning rather than keywords, so wording differences between two quotes
+                       for the same thing do not hide the comparison.</p>
+                    <p>Historical rates are uplifted by the annual figure above, compounded
+                       over the age of each quote — a structure priced two years ago is not a
+                       today price.</p>
+                </div>
+
+                <field name="line_ids" invisible="not searched" nolabel="1">
+                    <list editable="bottom" create="false" delete="false">
+                        <field name="selected" widget="boolean_toggle"/>
+                        <field name="image" widget="image" width="60px" options="{'size': [50, 50]}"/>
+                        <field name="title" readonly="1"/>
+                        <field name="similarity" readonly="1" digits="[3,1]"/>
+                        <field name="historical_rate" readonly="1"/>
+                        <field name="age_years" readonly="1" digits="[3,1]"/>
+                        <!-- Editable: the uplift is a starting point, not a decision. -->
+                        <field name="adjusted_rate"/>
+                        <field name="quantity"/>
+                        <field name="uom_label" readonly="1"/>
+                        <field name="quote_date" readonly="1" optional="show"/>
+                        <field name="venue" readonly="1" optional="show"/>
+                        <field name="source_name" readonly="1" optional="hide"/>
+                        <!-- Surfaced because a low-confidence rate looks identical to a good
+                             one once it is sitting on a client's quotation. -->
+                        <field name="rate_confidence" readonly="1" optional="show"
+                               decoration-warning="rate_confidence == 'low'"/>
+                        <!-- A borrowed photo shows another job's structure; saying so is the
+                             difference between a reference and a misrepresentation. -->
+                        <field name="image_origin" readonly="1" optional="show"/>
+                    </list>
+                </field>
+
+                <footer>
+                    <button name="action_search" type="object" string="Search"
+                            class="btn-primary"/>
+                    <button name="action_add_selected" type="object" string="Add to Quotation"
+                            class="btn-primary" invisible="not searched"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_order_form_archive" model="ir.ui.view">
+        <field name="name">sale.order.form.archive</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_price_archive" type="object"
+                        class="oe_stat_button" icon="fa-search"
+                        groups="redcube_price_intelligence.group_price_archive_user">
+                    <div class="o_stat_info">
+                        <span class="o_stat_text">Price from</span>
+                        <span class="o_stat_text">Archive</span>
+                    </div>
+                </button>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_line_archive" model="ir.ui.view">
+        <field name="name">sale.order.line.form.archive</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='order_line']/list/field[@name='price_unit']"
+                   position="after">
+                <!-- Optional and hidden by default: provenance matters when a price is
+                     questioned, not while typing an order. -->
+                <field name="archive_item_id" optional="hide" readonly="1"/>
+                <field name="archive_similarity" optional="hide" readonly="1" digits="[3,1]"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_product_template_form_archive" model="ir.ui.view">
+        <field name="name">product.template.form.archive</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button class="oe_stat_button" icon="fa-history" type="object"
+                        name="action_view_archive_items"
+                        invisible="archive_quote_count == 0"
+                        groups="redcube_price_intelligence.group_price_archive_user">
+                    <field name="archive_quote_count" widget="statinfo" string="Past Quotes"/>
+                </button>
+            </xpath>
+            <xpath expr="//field[@name='list_price']" position="after">
+                <!-- The spread this has actually sold within, which is the number worth
+                     knowing when defending a price. -->
+                <label for="archive_rate_min" string="Historically Quoted"
+                       invisible="archive_quote_count == 0"/>
+                <div invisible="archive_quote_count == 0">
+                    <field name="archive_rate_min" readonly="1" class="oe_inline"/>
+                    <span> to </span>
+                    <field name="archive_rate_max" readonly="1" class="oe_inline"/>
+                </div>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

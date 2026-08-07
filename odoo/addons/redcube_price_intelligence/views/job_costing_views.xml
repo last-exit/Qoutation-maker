@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_order_form_job_costing" model="ir.ui.view">
+        <field name="name">sale.order.form.job.costing</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='button_box']" position="inside">
+                <button name="action_open_job_account" type="object"
+                        class="oe_stat_button" icon="fa-calculator"
+                        invisible="state not in ('sale', 'done')">
+                    <div class="o_stat_info">
+                        <field name="actual_cost" widget="monetary" class="o_stat_value"/>
+                        <span class="o_stat_text">Actual Cost</span>
+                    </div>
+                </button>
+            </xpath>
+            <xpath expr="//page[@name='other_information']" position="after">
+                <page string="Job Costing" name="job_costing"
+                      invisible="state not in ('sale', 'done')">
+                    <group>
+                        <group string="Quoted vs Actual">
+                            <field name="quoted_revenue" widget="monetary"/>
+                            <field name="actual_cost" widget="monetary"/>
+                            <field name="actual_margin" widget="monetary"
+                                   decoration-danger="actual_margin &lt; 0"/>
+                            <field name="actual_margin_pct" widget="percentage"/>
+                        </group>
+                        <group string="Job Account">
+                            <field name="analytic_account_id" readonly="1"/>
+                            <field name="has_cost_data" invisible="1"/>
+                        </group>
+                    </group>
+                    <div class="alert alert-info" role="alert" invisible="has_cost_data">
+                        Nothing has been booked against this job yet, so the margin above is
+                        the quoted one, not a measured one. Link a purchase order to this job
+                        or log crew time against it and the actual figures fill in.
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_order_list_job_costing" model="ir.ui.view">
+        <field name="name">sale.order.list.job.costing</field>
+        <field name="model">sale.order</field>
+        <field name="inherit_id" ref="sale.view_order_tree"/>
+        <field name="arch" type="xml">
+            <field name="amount_total" position="after">
+                <field name="actual_cost" widget="monetary" optional="hide"/>
+                <field name="actual_margin" widget="monetary" optional="hide"/>
+                <field name="actual_margin_pct" optional="hide"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_purchase_order_form_job" model="ir.ui.view">
+        <field name="name">purchase.order.form.job</field>
+        <field name="model">purchase.order</field>
+        <field name="inherit_id" ref="purchase.purchase_order_form"/>
+        <field name="arch" type="xml">
+            <field name="partner_ref" position="after">
+                <!-- The one field that makes a purchase show up in job costing. Without it a
+                     supplier invoice is just a cost with no job attached. -->
+                <field name="sale_order_id"
+                       domain="[('state', 'in', ('sale', 'done'))]"
+                       options="{'no_create': True}"/>
+            </field>
+        </field>
+    </record>
+
+    <record id="view_legacy_import_form" model="ir.ui.view">
+        <field name="name">redcube.legacy.import.form</field>
+        <field name="model">redcube.legacy.import</field>
+        <field name="arch" type="xml">
+            <form string="Import Desktop App Data">
+                <field name="state" invisible="1"/>
+                <group invisible="state == 'done'">
+                    <field name="legacy_path"/>
+                    <field name="import_clients"/>
+                    <field name="import_catalog"/>
+                    <field name="import_quotes"/>
+                </group>
+                <div class="text-muted" invisible="state == 'done'">
+                    <p>Reads the desktop app's SQLite files directly. Nothing needs to be
+                       running, and the files are opened read-only.</p>
+                    <p>Safe to run more than once: clients and products are matched on their
+                       normalized name, and quotations on the reference printed on the
+                       original document — which is preserved exactly, so a client holding a
+                       PDF labelled Q-7 can still find Q-7 here.</p>
+                </div>
+                <div invisible="state != 'done'">
+                    <field name="result_message" nolabel="1" readonly="1"/>
+                </div>
+                <footer>
+                    <button name="action_import" type="object" string="Import"
+                            class="btn-primary" invisible="state == 'done'"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_legacy_import" model="ir.actions.act_window">
+        <field name="name">Import Desktop Data</field>
+        <field name="res_model">redcube.legacy.import</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <menuitem id="menu_legacy_import"
+              name="Import Desktop Data"
+              parent="menu_price_archive"
+              action="action_legacy_import"
+              sequence="40"
+              groups="group_price_archive_manager"/>
+
+</odoo>
