@@ -38,6 +38,7 @@ What it adds:
         "security/ir.model.access.csv",
         "views/archive_item_views.xml",
         "views/archive_source_views.xml",
+        "views/wizard_views.xml",
         "views/menus.xml",
     ],
     "installable": True,

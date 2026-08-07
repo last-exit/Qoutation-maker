@@ -56,6 +56,10 @@ services:
       # The exported ONNX embedding model (~91 MB). Mounted rather than baked into the
       # image so re-exporting it does not mean a rebuild.
       - ../models:/opt/models:ro
+      # The quotation archive, read-only. Bind-mounting the real folder rather than
+      # copying it in means re-indexing always reads current files, and the archive can
+      # live on a local disk, an external drive or a NAS share without a code change.
+      - ${ARCHIVE_PATH:?set ARCHIVE_PATH in odoo/.env}:/mnt/archive:ro
     restart: unless-stopped
 
 volumes:

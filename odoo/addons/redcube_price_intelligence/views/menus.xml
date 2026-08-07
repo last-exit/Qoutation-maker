@@ -18,6 +18,19 @@
               action="action_archive_item"
               sequence="10"/>
 
+    <menuitem id="menu_archive_search"
+              name="Search Archive"
+              parent="menu_price_archive"
+              action="action_archive_search_wizard"
+              sequence="5"/>
+
+    <menuitem id="menu_archive_index"
+              name="Index Archive"
+              parent="menu_price_archive"
+              action="action_archive_index_wizard"
+              sequence="30"
+              groups="group_price_archive_manager"/>
+
     <menuitem id="menu_archive_sources"
               name="Source Documents"
               parent="menu_price_archive"

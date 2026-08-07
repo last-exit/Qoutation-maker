@@ -75,11 +75,20 @@ class ArchiveItem(models.Model):
         [("high", "High"), ("medium", "Medium"), ("low", "Low")],
         default="medium", string="Rate Confidence",
     )
+    # "none" is not the same as "low" and both are kept: "low" means the venue was guessed
+    # from a subtitle and wants verifying, "none" means the document carried no venue signal
+    # at all. The review queue treats them differently, so collapsing them would lose the
+    # distinction between "check this" and "this needs filling in".
     venue_confidence = fields.Selection(
-        [("high", "High"), ("medium", "Medium"), ("low", "Low")],
+        [("high", "High"), ("medium", "Medium"), ("low", "Low"), ("none", "Not Found")],
         default="medium", string="Venue Confidence",
     )
     needs_review = fields.Boolean(string="Needs Review", index=True, default=False)
+    # A plain stored column rather than a computed field that inspects the vector column.
+    # Odoo would not dispatch to a `search=` hook on a non-stored computed boolean here, and
+    # even when it did the hook scanned the whole table on every query. Set by
+    # write_embeddings, which is the only thing that populates the vector.
+    has_embedding = fields.Boolean(string="Embedded", index=True, default=False, copy=False)
     flag_reason = fields.Char(string="Review Reason")
 
     active = fields.Boolean(default=True)
@@ -109,6 +118,118 @@ class ArchiveItem(models.Model):
             f"{float(rate or 0):.4f}",
         ))
         return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+    # --- Vector search ----------------------------------------------------------------
+
+    def init(self):
+        """Adds the pgvector column and its index.
+
+        Odoo's ORM has no vector field type, so the column is managed here and queried with
+        raw SQL. Keeping it on this table rather than in a separate vector store means a
+        similarity search is an ordinary SQL filter — it can be combined with venue, date or
+        confidence in one query, and there is no second datastore to drift out of sync.
+        """
+        super().init()
+        self.env.cr.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        self.env.cr.execute(
+            "ALTER TABLE redcube_archive_item ADD COLUMN IF NOT EXISTS embedding vector(%s)"
+            % EMBEDDING_DIM
+        )
+        # HNSW over cosine distance. The embedding model returns unit vectors, so cosine and
+        # inner product rank identically; cosine is used because its distance is bounded to
+        # [0, 2], which makes the similarity percentage shown to a PM meaningful.
+        self.env.cr.execute("""
+            CREATE INDEX IF NOT EXISTS redcube_archive_item_embedding_idx
+            ON redcube_archive_item USING hnsw (embedding vector_cosine_ops)
+        """)
+
+    @staticmethod
+    def _vector_literal(vector):
+        """pgvector's text input format: `[0.1,0.2,...]`.
+
+        Elements are cast to plain Python floats first. numpy 2 renders a float32 scalar as
+        `np.float32(0.023)`, so formatting a numpy array straight into the literal produces
+        something Postgres rejects outright.
+        """
+        return "[" + ",".join(repr(float(x)) for x in vector) + "]"
+
+    def write_embeddings(self, vectors_by_id):
+        """Bulk-writes embeddings. `vectors_by_id` maps record id to a sequence of floats."""
+        if not vectors_by_id:
+            return 0
+        # One statement rather than a round trip per row: a full archive is a few hundred
+        # vectors and the per-statement overhead dominates the actual work.
+        rows = [(record_id, self._vector_literal(vector))
+                for record_id, vector in vectors_by_id.items()]
+        self.env.cr.execute(
+            """
+            UPDATE redcube_archive_item AS item
+            SET embedding = payload.embedding::vector, has_embedding = TRUE
+            FROM (VALUES %s) AS payload(id, embedding)
+            WHERE item.id = payload.id
+            """ % ",".join(["(%s, %s)"] * len(rows)),
+            [value for row in rows for value in row],
+        )
+        # The ORM cache still holds the pre-update value of has_embedding for these records.
+        self.browse(list(vectors_by_id)).invalidate_recordset(["has_embedding"])
+        return len(rows)
+
+    @api.model
+    def semantic_search(self, query_text, limit=10, extra_domain=None):
+        """Finds archive items whose description means the same thing as `query_text`.
+
+        Meaning rather than keywords is the entire point: the same play structure gets
+        written up differently on every job, so an ILIKE search over descriptions misses the
+        comparable pricing that a PM most needs to see.
+
+        Returns a list of dicts with a `similarity` percentage, most similar first.
+        """
+        query_text = (query_text or "").strip()
+        if not query_text:
+            return []
+
+        from ..lib.embedder import get_embedder
+        vector = get_embedder().encode(query_text)
+        vector_literal = str([float(x) for x in vector])
+
+        # Restrict by the ORM first so record rules and any extra filter are honoured, then
+        # rank that id set by distance. Doing it the other way round would let the vector
+        # index return rows the user is not allowed to see.
+        allowed_ids = self.search((extra_domain or []) + [("has_embedding", "=", True)]).ids
+        if not allowed_ids:
+            return []
+
+        self.env.cr.execute(
+            """
+            SELECT id, 1 - (embedding <=> %s::vector) AS similarity
+            FROM redcube_archive_item
+            WHERE id = ANY(%s) AND embedding IS NOT NULL
+            ORDER BY embedding <=> %s::vector
+            LIMIT %s
+            """,
+            (vector_literal, allowed_ids, vector_literal, limit),
+        )
+        ranked = self.env.cr.fetchall()
+
+        by_id = {item.id: item for item in self.browse([r[0] for r in ranked])}
+        results = []
+        for record_id, similarity in ranked:
+            item = by_id.get(record_id)
+            if not item:
+                continue
+            results.append({
+                "id": record_id,
+                "title": item.title,
+                "description": item.name,
+                "rate": item.rate,
+                "unit": item.uom_label,
+                "quote_date": item.quote_date and item.quote_date.isoformat() or "",
+                "venue": item.venue,
+                "source_name": item.source_name,
+                "similarity": round(max(0.0, min(1.0, similarity)) * 100, 1),
+                "has_photo": bool(item.image_hash),
+            })
+        return results
 
     def action_view_source(self):
         """Opens the original quotation this line was read out of, so a PM can see the row in

@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_archive_index_wizard_form" model="ir.ui.view">
+        <field name="name">redcube.archive.index.wizard.form</field>
+        <field name="model">redcube.archive.index.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Index Price Archive">
+                <group invisible="state == 'done'">
+                    <field name="state" invisible="1"/>
+                    <field name="archive_path"/>
+                    <field name="force"/>
+                </group>
+                <div invisible="state == 'done'" class="text-muted">
+                    <p>Reads every spreadsheet, PDF and Word document in the folder and builds
+                       the searchable price archive from them. Quotations this system produced
+                       itself are skipped, so their marked-up prices never re-enter the
+                       archive.</p>
+                    <p>Documents that have not changed since the last run are skipped. Nothing
+                       already in the archive is removed unless its own source document was
+                       re-read and no longer contains it.</p>
+                </div>
+
+                <div invisible="state != 'done'">
+                    <group>
+                        <field name="total_count" string="Items in archive" readonly="1"/>
+                        <field name="created_count" string="Newly added" readonly="1"/>
+                        <field name="updated_count" string="Updated" readonly="1"/>
+                        <field name="removed_count" string="Removed" readonly="1"/>
+                    </group>
+                    <field name="result_message" nolabel="1" readonly="1"/>
+                </div>
+
+                <footer>
+                    <button name="action_index" type="object" string="Index Now"
+                            class="btn-primary" invisible="state == 'done'"/>
+                    <button name="action_view_archive" type="object" string="Open Archive"
+                            class="btn-primary" invisible="state != 'done'"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_archive_index_wizard" model="ir.actions.act_window">
+        <field name="name">Index Archive</field>
+        <field name="res_model">redcube.archive.index.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+    <record id="view_archive_search_wizard_form" model="ir.ui.view">
+        <field name="name">redcube.archive.search.wizard.form</field>
+        <field name="model">redcube.archive.search.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Search Price Archive">
+                <group>
+                    <field name="query" placeholder="e.g. play tower with slide and rockwall"/>
+                    <field name="limit"/>
+                </group>
+                <div class="text-muted">
+                    <p>Describe the structure the way you would to a colleague. This matches on
+                       meaning, not keywords, so wording differences between two quotes for the
+                       same thing do not hide the comparison.</p>
+                </div>
+                <field name="result_html" nolabel="1" readonly="1"/>
+                <footer>
+                    <button name="action_search" type="object" string="Search"
+                            class="btn-primary"/>
+                    <button string="Close" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_archive_search_wizard" model="ir.actions.act_window">
+        <field name="name">Search Archive</field>
+        <field name="res_model">redcube.archive.search.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+</odoo>
