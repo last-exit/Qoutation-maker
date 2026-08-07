@@ -3,15 +3,27 @@
   "configurations": [
     {
       "name": "uss-backend",
-      "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-Command", "Set-Location -LiteralPath 'C:\\Users\\moham\\Website V2\\backend'; npm run dev"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/fazalhaque/StudentScheduler/backend", "run", "dev"],
       "port": 3001
     },
     {
       "name": "uss-frontend",
-      "runtimeExecutable": "powershell",
-      "runtimeArgs": ["-NoProfile", "-Command", "Set-Location -LiteralPath 'C:\\Users\\moham\\Website V2\\ui'; npm run dev"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/fazalhaque/StudentScheduler/ui", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "quotation-maker-preview",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8791"],
+      "port": 8791
+    },
+    {
+      "name": "mission-control",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "/Users/fazalhaque/lifeos", "run", "dev"],
+      "port": 4321
     }
   ]
 }
