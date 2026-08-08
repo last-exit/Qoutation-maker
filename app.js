@@ -425,9 +425,9 @@ function initCompilerVSplit() {
   }
 }
 
-const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', review: 'Needs Review', history: 'Quotation History' };
-// Home has its own hero; Review/History already carry a panel title. Only Compiler
-// gets the shared page-head, since it's the one view that never had a headline.
+const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', review: 'Needs Review', history: 'Quotation History', estimator: 'Automated Design Estimator' };
+// Home has its own hero; Review/History/Estimator already carry a panel title. Only
+// Compiler gets the shared page-head, since it's the one view that never had a headline.
 const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
 
 function switchTab(tab) {
@@ -435,6 +435,7 @@ function switchTab(tab) {
   document.getElementById('view-compiler').classList.toggle('hidden', tab !== 'compiler');
   document.getElementById('view-history').classList.toggle('hidden', tab !== 'history');
   document.getElementById('view-review').classList.toggle('hidden', tab !== 'review');
+  document.getElementById('view-estimator').classList.toggle('hidden', tab !== 'estimator');
 
   document.querySelectorAll('.seg').forEach(function (s) {
     s.classList.toggle('active', s.getAttribute('data-tab') === tab);
@@ -453,6 +454,7 @@ function switchTab(tab) {
   if (tab === 'home') loadHomeDashboard();
   if (tab === 'history') loadHistory();
   if (tab === 'review') loadReviewQueue();
+  if (tab === 'estimator') loadEstimatorOptions();
 }
 
 // Slides the dark (or cherry, on Asphalt mode) pill under whichever tab is active —
@@ -1377,4 +1379,492 @@ function dismissReviewGroup(fileName) {
     if (failed > 0) showToast(`${failed} item(s) could not be dismissed.`, 'warning');
     else showToast(`Dismissed all flagged items from ${fileName}.`, 'success');
   });
+}
+
+// ---------------------------------------------------------------------------
+// Automated Design Estimator
+//
+// Drawings are parsed once into `estimatorSpecs` (the editable truth) and costed on the
+// Python side on every change. Nothing here does arithmetic on a price: the browser holds
+// dimensions and choices, `calculators.py` holds every formula. That split is the point —
+// a number on screen can always be traced to a printed basis string beside it.
+// ---------------------------------------------------------------------------
+let estimatorSpecs = [];        // editable spec per drawing page
+let estimatorPages = [];        // immutable parse output (thumbnail, raw text, warnings)
+let estimatorResults = [];      // BOQ per page, from the backend
+let estimatorSummary = null;    // cumulative master summary
+let estimatorOptions = null;    // dropdown options + rate-card constants
+let estimatorMargin = 35;
+let estimatorLoaded = false;
+
+const CONFIDENCE_LABELS = {
+  high: 'Exact match on drawing',
+  medium: 'Read from a dimension pair',
+  low: 'Weak — please confirm',
+  none: 'Nothing detected — enter manually',
+};
+
+function loadEstimatorOptions() {
+  if (!api() || estimatorLoaded) return;
+  api().get_estimator_options().then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not load estimator options.', 'error'); return; }
+    estimatorOptions = res.options;
+    estimatorMargin = estimatorOptions.default_margin_pct;
+    estimatorLoaded = true;
+
+    const badge = document.getElementById('est-ratecard-badge');
+    if (badge) {
+      badge.innerText = `${estimatorOptions.rate_card.item_count} rates · ${estimatorOptions.rate_card.source}`;
+    }
+    // OCR is only needed for raster drawings; vector PDFs are exact either way, so this
+    // is stated once as a capability note rather than nagged as an error.
+    if (!estimatorOptions.ocr.available) {
+      showEstimatorNotice(
+        `${estimatorOptions.ocr.hint} PDF drawings are unaffected.`, 'info'
+      );
+    }
+  }).catch(function (err) {
+    showToast('Estimator options failed to load: ' + err, 'error');
+  });
+}
+
+function showEstimatorNotice(message, kind) {
+  const el = document.getElementById('est-notice');
+  if (!el) return;
+  el.className = `est-notice est-notice-${kind || 'info'}`;
+  el.innerHTML = `${icon(kind === 'error' ? 'alert' : 'sparkles', 'icon-sm')}<span>${esc(message)}</span>`;
+  el.classList.remove('hidden');
+}
+
+function pickDesignFiles() {
+  if (!api()) { showToast('Backend not ready yet.', 'warning'); return; }
+
+  api().pick_design_files().then(function (res) {
+    if (!res.success) {
+      if (res.error && res.error !== 'No files selected.') showToast(res.error, 'error');
+      return;
+    }
+    const loading = document.getElementById('est-loading');
+    loading.classList.remove('hidden');
+    loading.innerHTML = skeletonCards(Math.min(res.paths.length, 3));
+
+    return api().parse_design_files(res.paths).then(function (parsed) {
+      loading.classList.add('hidden');
+      loading.innerHTML = '';
+
+      if (!parsed.success) { showToast(parsed.error || 'Could not read those files.', 'error'); return; }
+      if (!parsed.drawings.length) { showToast('No readable drawing pages found.', 'warning'); return; }
+
+      parsed.drawings.forEach(function (page) {
+        estimatorPages.push(page);
+        // The detected values seed the editable spec; from here the PM owns them.
+        estimatorSpecs.push(Object.assign({}, page.detected, {
+          substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
+          cutouts: (page.detected.cutouts || []).map(c => Object.assign({}, c)),
+          source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
+        }));
+      });
+
+      (parsed.skipped || []).forEach(s => showToast(`${s.file}: ${s.reason}`, 'warning'));
+      if ((parsed.warnings || []).length) {
+        showEstimatorNotice(parsed.warnings.join('  •  '), 'warning');
+      }
+
+      document.getElementById('est-dropzone').classList.add('est-dropzone-compact');
+      document.getElementById('est-clear-btn').style.display = '';
+      renderEstimatorPages();
+      recalcEstimate();
+      showToast(`${parsed.drawings.length} drawing page(s) parsed.`, 'success');
+    });
+  }).catch(function (err) {
+    document.getElementById('est-loading').classList.add('hidden');
+    showToast('Drawing import failed: ' + err, 'error');
+  });
+}
+
+function clearEstimator() {
+  if (estimatorSpecs.length && !confirm('Clear all uploaded drawings and their estimates?')) return;
+  estimatorSpecs = [];
+  estimatorPages = [];
+  estimatorResults = [];
+  estimatorSummary = null;
+  document.getElementById('est-pages').innerHTML = '';
+  document.getElementById('est-summary').innerHTML = '';
+  document.getElementById('est-notice').classList.add('hidden');
+  document.getElementById('est-dropzone').classList.remove('est-dropzone-compact');
+  document.getElementById('est-clear-btn').style.display = 'none';
+}
+
+// --- Rendering -------------------------------------------------------------
+
+function renderEstimatorPages() {
+  const container = document.getElementById('est-pages');
+  if (!estimatorSpecs.length) { container.innerHTML = ''; return; }
+
+  let html = '';
+  estimatorSpecs.forEach(function (spec, idx) {
+    const page = estimatorPages[idx];
+    const conf = spec.confidence || 'none';
+    const typeOptions = estimatorOptions.item_types
+      .map(t => `<option value="${t.key}" ${spec.item_type === t.key ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
+    const finishOptions = estimatorOptions.finishes
+      .map(f => `<option value="${f.key}" ${spec.finish === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('');
+    const substrateOptions = ['<option value="">Default (MDF 18mm)</option>'].concat(
+      estimatorOptions.substrates.map(s =>
+        `<option value="${s.code}" ${spec.substrate === s.code ? 'selected' : ''}>${esc(s.label)} — ${money(s.cost)}</option>`)
+    ).join('');
+    const framingOptions = ['<option value="">Default (2"x2" studs)</option>'].concat(
+      estimatorOptions.framing.map(f =>
+        `<option value="${f.code}" ${spec.framing === f.code ? 'selected' : ''}>${esc(f.label)} — ${money(f.cost)}</option>`)
+    ).join('');
+
+    html += `
+      <div class="est-card anim-in" style="animation-delay:${idx * 50}ms;">
+        <div class="est-card-head">
+          <div class="est-card-title">
+            <span class="est-index">${idx + 1}</span>
+            <span>${esc(spec.label)}</span>
+          </div>
+          <div class="est-card-meta">
+            <span class="est-chip">${esc(page.file_name)} · p${page.page_number}/${page.page_count}</span>
+            <span class="est-chip est-chip-${page.text_source}">${page.text_source === 'vector' ? 'Vector text' : page.text_source === 'ocr' ? 'OCR' : 'No text'}</span>
+            <span class="est-chip est-conf-${conf}" title="${esc(CONFIDENCE_LABELS[conf] || '')}">${conf}</span>
+          </div>
+        </div>
+
+        <div class="est-split">
+          <!-- LEFT: the drawing itself -->
+          <div class="est-visual">
+            <img src="${page.thumbnail}" alt="${esc(spec.label)}" onclick="openEstimatorPreview(${idx})">
+            <div class="est-visual-cap">
+              ${page.width_px} × ${page.height_px} px${spec.source_text ? ` · read “${esc(spec.source_text)}”` : ''}
+            </div>
+            ${(page.warnings || []).map(w => `<div class="est-warn">${icon('alert', 'icon-sm')}<span>${esc(w)}</span></div>`).join('')}
+          </div>
+
+          <!-- RIGHT: overrides + live cost -->
+          <div class="est-specs">
+            <div class="est-field-grid">
+              <div class="est-field est-field-wide">
+                <label>Item label</label>
+                <input type="text" class="input" value="${esc(spec.label)}"
+                       onchange="estSet(${idx},'label',this.value)">
+              </div>
+              <div class="est-field">
+                <label>Type</label>
+                <select class="input" onchange="estSet(${idx},'item_type',this.value)">${typeOptions}</select>
+              </div>
+              <div class="est-field">
+                <label>Qty</label>
+                <input type="number" class="input" min="1" step="1" value="${spec.quantity || 1}"
+                       onchange="estSet(${idx},'quantity',this.value)">
+              </div>
+              <div class="est-field">
+                <label>Length (m)</label>
+                <input type="number" class="input" min="0" step="0.01" value="${spec.length_m || 0}"
+                       onchange="estSet(${idx},'length_m',this.value)">
+              </div>
+              <div class="est-field">
+                <label>Height (m)</label>
+                <input type="number" class="input" min="0" step="0.01" value="${spec.height_m || 0}"
+                       onchange="estSet(${idx},'height_m',this.value)">
+              </div>
+              <div class="est-field">
+                <label>Depth (m)</label>
+                <input type="number" class="input" min="0" step="0.01" value="${spec.depth_m || 0}"
+                       onchange="estSet(${idx},'depth_m',this.value)" placeholder="auto">
+              </div>
+              <div class="est-field">
+                <label>Clad faces</label>
+                <input type="number" class="input" min="1" max="2" step="1" value="${spec.faces || 1}"
+                       onchange="estSet(${idx},'faces',this.value)">
+              </div>
+              <div class="est-field est-field-wide">
+                <label>Finish system</label>
+                <select class="input" onchange="estSet(${idx},'finish',this.value)">${finishOptions}</select>
+              </div>
+              <div class="est-field est-field-wide">
+                <label>Substrate board</label>
+                <select class="input" onchange="estSet(${idx},'substrate',this.value)">${substrateOptions}</select>
+              </div>
+              <div class="est-field est-field-wide">
+                <label>Framing</label>
+                <select class="input" onchange="estSet(${idx},'framing',this.value)">${framingOptions}</select>
+              </div>
+              <div class="est-field">
+                <label>LED strip (m)</label>
+                <input type="number" class="input" min="0" step="0.1" value="${spec.led_meters || 0}"
+                       onchange="estSet(${idx},'led_meters',this.value)">
+              </div>
+            </div>
+
+            ${spec.assumed_unit ? `<div class="est-warn">${icon('alert', 'icon-sm')}<span>Units weren't stated on the drawing — read as millimetres. Check the dimensions above.</span></div>` : ''}
+
+            <div class="est-cutouts">
+              <div class="est-subhead">
+                <span>Cutouts &amp; openings</span>
+                <button class="btn btn-ghost btn-xs" onclick="estAddCutout(${idx})">
+                  ${icon('plus', 'icon-sm')} Add
+                </button>
+              </div>
+              <div id="est-cutouts-${idx}">${renderCutoutRows(idx)}</div>
+            </div>
+
+            <div id="est-cost-${idx}" class="est-cost"></div>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function renderCutoutRows(idx) {
+  const cutouts = estimatorSpecs[idx].cutouts || [];
+  if (!cutouts.length) {
+    return '<div class="est-empty-inline">None detected — the full face is being clad.</div>';
+  }
+  return cutouts.map((c, ci) => `
+    <div class="est-cutout-row">
+      <input type="text" class="input" value="${esc(c.label || '')}" placeholder="Label"
+             onchange="estSetCutout(${idx},${ci},'label',this.value)">
+      <input type="number" class="input" min="0" step="0.01" value="${c.width_m || 0}" title="Width (m)"
+             onchange="estSetCutout(${idx},${ci},'width_m',this.value)">
+      <span class="est-x">×</span>
+      <input type="number" class="input" min="0" step="0.01" value="${c.height_m || 0}" title="Height (m)"
+             onchange="estSetCutout(${idx},${ci},'height_m',this.value)">
+      <input type="number" class="input" min="1" step="1" value="${c.count || 1}" title="Count"
+             onchange="estSetCutout(${idx},${ci},'count',this.value)">
+      <button class="icon-btn" title="Remove" onclick="estRemoveCutout(${idx},${ci})">
+        ${icon('close', 'icon-sm')}
+      </button>
+    </div>`).join('');
+}
+
+// --- Edits -----------------------------------------------------------------
+// Only the cost panes and the summary re-render on a change, never the inputs — a full
+// re-render would steal focus mid-edit and make the overrides unusable.
+
+const NUMERIC_SPEC_FIELDS = ['length_m', 'height_m', 'depth_m', 'faces', 'quantity', 'led_meters'];
+
+function estSet(idx, field, value) {
+  if (!estimatorSpecs[idx]) return;
+  estimatorSpecs[idx][field] = NUMERIC_SPEC_FIELDS.includes(field) ? (parseFloat(value) || 0) : value;
+  recalcEstimate();
+}
+
+function estSetCutout(idx, cutIdx, field, value) {
+  const cutout = (estimatorSpecs[idx].cutouts || [])[cutIdx];
+  if (!cutout) return;
+  cutout[field] = field === 'label' ? value : (parseFloat(value) || 0);
+  recalcEstimate();
+}
+
+function estAddCutout(idx) {
+  estimatorSpecs[idx].cutouts = estimatorSpecs[idx].cutouts || [];
+  estimatorSpecs[idx].cutouts.push({ label: 'Opening', width_m: 0, height_m: 0, count: 1 });
+  document.getElementById(`est-cutouts-${idx}`).innerHTML = renderCutoutRows(idx);
+  recalcEstimate();
+}
+
+function estRemoveCutout(idx, cutIdx) {
+  estimatorSpecs[idx].cutouts.splice(cutIdx, 1);
+  document.getElementById(`est-cutouts-${idx}`).innerHTML = renderCutoutRows(idx);
+  recalcEstimate();
+}
+
+function setEstimatorMargin(value) {
+  estimatorMargin = parseFloat(value) || 0;
+  recalcEstimate();
+}
+
+// --- Costing ---------------------------------------------------------------
+
+function recalcEstimate() {
+  if (!api() || !estimatorSpecs.length) return;
+
+  api().compute_design_estimate({ specs: estimatorSpecs, margin_pct: estimatorMargin })
+    .then(function (res) {
+      if (!res.success) { showToast(res.error || 'Costing failed.', 'error'); return; }
+      estimatorResults = res.items;
+      estimatorSummary = res.summary;
+
+      res.items.forEach(function (item, idx) {
+        const target = document.getElementById(`est-cost-${idx}`);
+        if (target) target.innerHTML = renderItemCost(item);
+      });
+      (res.errors || []).forEach(e => showToast(e, 'warning'));
+      renderEstimatorSummary();
+    }).catch(function (err) {
+      showToast('Costing failed: ' + err, 'error');
+    });
+}
+
+function renderItemCost(item) {
+  const materialRows = item.materials.map(m => `
+    <tr>
+      <td><span class="est-code">${esc(m.code)}</span> ${esc(m.description)}</td>
+      <td class="num">${m.qty}</td>
+      <td>${esc(m.unit)}</td>
+      <td class="num">${money(m.unit_cost)}</td>
+      <td class="num strong">${money(m.line_cost)}</td>
+    </tr>
+    <tr class="est-basis-row"><td colspan="5">${esc(m.basis)}</td></tr>`).join('');
+
+  const laborRows = item.labor.map(l => `
+    <tr>
+      <td>Labor — ${esc(l.trade)}</td>
+      <td class="num">${l.hours}</td>
+      <td>Hrs</td>
+      <td class="num">${money(l.rate)}</td>
+      <td class="num strong">${money(l.cost)}</td>
+    </tr>
+    <tr class="est-basis-row"><td colspan="5">${esc(l.basis)}</td></tr>`).join('');
+
+  const surfaceRows = item.surfaces.map(s =>
+    `<li><span>${esc(s.name)}</span><code>${esc(s.formula)}</code><b>${s.area_m2.toFixed(2)} m²</b></li>`
+  ).join('');
+
+  return `
+    <div class="est-area-strip">
+      <ul class="est-surfaces">${surfaceRows}</ul>
+      <div class="est-area-math">
+        <span>Gross <b>${item.gross_area_m2.toFixed(2)} m²</b></span>
+        <span>− Cutouts <b>${item.cutout_area_m2.toFixed(2)} m²</b></span>
+        <span class="est-net">= Net clad <b>${item.net_area_m2.toFixed(2)} m²</b></span>
+      </div>
+    </div>
+
+    <table class="est-table">
+      <thead><tr><th>Item</th><th class="num">Qty</th><th>Unit</th><th class="num">Rate</th><th class="num">Cost</th></tr></thead>
+      <tbody>${materialRows}${laborRows}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4">Materials ${item.quantity > 1 ? `× ${item.quantity} units` : ''}</td>
+          <td class="num strong">${money(item.material_cost)}</td>
+        </tr>
+        <tr>
+          <td colspan="4">Labor — ${item.labor_hours} hrs</td>
+          <td class="num strong">${money(item.labor_cost)}</td>
+        </tr>
+        <tr class="est-total-row">
+          <td colspan="4">Factory cost</td>
+          <td class="num strong">${money(item.factory_cost)}</td>
+        </tr>
+      </tfoot>
+    </table>`;
+}
+
+function renderEstimatorSummary() {
+  const container = document.getElementById('est-summary');
+  if (!estimatorSummary) { container.innerHTML = ''; return; }
+  const s = estimatorSummary;
+
+  const materialRows = s.consolidated_materials.map(m => `
+    <tr>
+      <td><span class="est-code">${esc(m.code)}</span> ${esc(m.description)}</td>
+      <td>${esc(m.category)}</td>
+      <td class="num">${m.qty}</td>
+      <td>${esc(m.unit)}</td>
+      <td class="num">${money(m.unit_cost)}</td>
+      <td class="num strong">${money(m.line_cost)}</td>
+    </tr>`).join('');
+
+  const laborRows = s.labor_by_trade.map(l => `
+    <tr>
+      <td colspan="2">Labor — ${esc(l.trade)}</td>
+      <td class="num">${l.hours}</td>
+      <td>Hrs</td>
+      <td class="num">${money(l.rate)}</td>
+      <td class="num strong">${money(l.cost)}</td>
+    </tr>`).join('');
+
+  container.innerHTML = `
+    <div class="est-master">
+      <div class="est-master-head">
+        ${icon('trending', 'icon')}
+        <div>
+          <div class="est-master-title">Master Summary</div>
+          <div class="est-master-sub">
+            ${s.item_count} item(s) · ${s.total_units} unit(s) · ${s.total_net_area_m2.toFixed(2)} m² clad
+          </div>
+        </div>
+      </div>
+
+      <table class="est-table est-table-master">
+        <thead><tr><th>Consolidated take-off</th><th>Category</th><th class="num">Qty</th><th>Unit</th><th class="num">Rate</th><th class="num">Cost</th></tr></thead>
+        <tbody>${materialRows}${laborRows}</tbody>
+      </table>
+
+      <div class="est-totals">
+        <div class="est-total-line"><span>Total materials</span><b>${money(s.total_material_cost)}</b></div>
+        <div class="est-total-line"><span>Total labor (${s.total_labor_hours} hrs)</span><b>${money(s.total_labor_cost)}</b></div>
+        <div class="est-total-line est-total-factory"><span>Factory cost</span><b>${money(s.factory_cost)}</b></div>
+        <div class="est-total-line est-margin-line">
+          <span>Margin
+            <input type="number" class="input est-margin-input" min="0" step="1" value="${s.margin_pct}"
+                   onchange="setEstimatorMargin(this.value)"> %
+          </span>
+          <b>${money(s.margin_amount)}</b>
+        </div>
+        <div class="est-total-line est-total-selling">
+          <span>Client selling price</span><b>${money(s.selling_price)}</b>
+        </div>
+      </div>
+
+      <div class="est-actions">
+        <label class="est-check">
+          <input type="checkbox" id="est-factory-sheet" checked>
+          Also write the Factory Production BOQ sheet
+        </label>
+        <button class="btn btn-primary" onclick="mergeDesignsToProposal()">
+          ${icon('arrowRight', 'icon-sm')} Merge All Drawings to Proposal
+        </button>
+      </div>
+      <p class="est-fineprint">
+        Client lines are added to the Compiler draft at the marked-up rate. The factory sheet
+        is written at raw factory cost and is never part of the client document.
+      </p>
+    </div>`;
+}
+
+// --- Export ----------------------------------------------------------------
+
+function mergeDesignsToProposal() {
+  if (!api() || !estimatorSpecs.length) return;
+
+  const includeFactory = document.getElementById('est-factory-sheet').checked;
+  const clientName = document.getElementById('client-name-input').value.trim() || 'Client';
+
+  api().merge_designs_to_proposal({
+    specs: estimatorSpecs,
+    margin_pct: estimatorMargin,
+    client_name: clientName,
+    include_factory_sheet: includeFactory,
+  }).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Merge failed.', 'error'); return; }
+
+    res.client_items.forEach(function (row) {
+      draftItems.push(Object.assign({ id: uid() }, row));
+    });
+    renderDraft();
+
+    if (res.factory_sheet) {
+      showToast('Factory BOQ written: ' + res.factory_sheet, 'success', 8000);
+    }
+    showToast(`${res.client_items.length} design item(s) added to the draft quote.`, 'success');
+    switchTab('compiler');
+  }).catch(function (err) {
+    showToast('Merge failed: ' + err, 'error');
+  });
+}
+
+function openEstimatorPreview(idx) {
+  const page = estimatorPages[idx];
+  if (!page) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'est-lightbox';
+  overlay.innerHTML = `<img src="${page.thumbnail}" alt="${esc(page.file_name)}">`;
+  overlay.addEventListener('click', () => overlay.remove());
+  document.body.appendChild(overlay);
 }

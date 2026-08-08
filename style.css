@@ -608,3 +608,160 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
 .format-choice { display: flex; gap: 8px; }
 .format-choice label { flex: 1; display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 7px 10px; font-size: 11px; cursor: pointer; }
 .format-choice input { accent-color: var(--accent); }
+
+/* ---------------------------------------------------------------------------
+   Automated Design Estimator
+   Every colour here is a token, so the Asphalt (dark) theme is inherited for free.
+   The visual job of this view is auditability: the derivation of a number sits
+   directly under the number, in the muted ink, at a smaller size.
+   --------------------------------------------------------------------------- */
+
+.btn-xs { padding: 3px 8px; font-size: 9.5px; }
+
+.est-badge { font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text-muted); background: var(--bg-panel-alt); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 4px 8px; }
+
+/* --- Upload zone --- */
+.est-dropzone { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 6px; text-align: center; padding: 34px 20px; margin-bottom: 16px; cursor: pointer;
+  border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg);
+  background: var(--bg-panel-alt); color: var(--text-secondary); transition: border-color .15s, background .15s; }
+.est-dropzone:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
+.est-dropzone .icon-lg { color: var(--text-muted); }
+.est-dropzone:hover .icon-lg { color: var(--accent); }
+.est-dropzone-title { margin: 0; font-size: 13px; font-weight: 800; color: var(--text-primary); }
+.est-dropzone-sub { margin: 0; font-size: 11px; line-height: 1.55; max-width: 460px; color: var(--text-muted); }
+/* Once drawings are loaded the zone stops competing with them for attention. */
+.est-dropzone-compact { padding: 12px 16px; flex-direction: row; gap: 10px; }
+.est-dropzone-compact .est-dropzone-sub, .est-dropzone-compact .icon-lg { display: none; }
+.est-dropzone-compact .est-dropzone-title { font-size: 11.5px; font-weight: 700; }
+
+.est-notice { display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; margin-bottom: 14px;
+  font-size: 11px; line-height: 1.55; border-radius: var(--radius-sm); border: 1px solid var(--border); }
+.est-notice-info { background: var(--bg-panel-alt); color: var(--text-secondary); }
+.est-notice-warning { background: var(--warning-soft); border-color: transparent; color: var(--warning); }
+.est-notice-error { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+
+/* --- Per-drawing card --- */
+.est-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-panel);
+  margin-bottom: 16px; overflow: hidden; box-shadow: var(--shadow-lg); }
+.est-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 14px; border-bottom: 1px solid var(--border); background: var(--bg-panel-alt); flex-wrap: wrap; }
+.est-card-title { display: flex; align-items: center; gap: 9px; font-size: 12.5px; font-weight: 800;
+  color: var(--text-primary); }
+.est-index { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px;
+  background: var(--accent); color: #fff; border-radius: var(--radius-sm); font-size: 10px; font-weight: 800; }
+.est-card-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.est-chip { font-size: 9px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  padding: 3px 7px; border-radius: var(--radius-sm); background: var(--bg-input);
+  border: 1px solid var(--border); color: var(--text-muted); }
+.est-chip-vector { color: var(--success); background: var(--success-soft); border-color: transparent; }
+.est-chip-ocr { color: var(--warning); background: var(--warning-soft); border-color: transparent; }
+.est-chip-none { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+.est-conf-high { color: var(--success); background: var(--success-soft); border-color: transparent; }
+.est-conf-medium { color: var(--warning); background: var(--warning-soft); border-color: transparent; }
+.est-conf-low, .est-conf-none { color: var(--danger); background: var(--danger-soft); border-color: transparent; }
+
+/* --- Side-by-side: drawing left, specs + cost right --- */
+.est-split { display: grid; grid-template-columns: minmax(240px, 5fr) 7fr; gap: 0; }
+.est-visual { padding: 14px; border-right: 1px solid var(--border); background: var(--bg-panel-alt); }
+.est-visual img { width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: #fff; cursor: zoom-in; display: block; }
+.est-visual img:hover { border-color: var(--accent); }
+.est-visual-cap { margin-top: 7px; font-size: 9.5px; color: var(--text-muted); line-height: 1.5; }
+.est-specs { padding: 14px; min-width: 0; }
+
+.est-warn { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; padding: 7px 9px;
+  font-size: 10px; line-height: 1.5; border-radius: var(--radius-sm);
+  background: var(--warning-soft); color: var(--warning); }
+
+/* --- Override fields --- */
+.est-field-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; }
+.est-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.est-field-wide { grid-column: span 2; }
+.est-field label { font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text-muted); }
+.est-field .input { padding: 6px 8px; font-size: 11px; }
+
+.est-cutouts { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.est-subhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--text-muted); }
+.est-cutout-row { display: grid; grid-template-columns: 1fr 76px 12px 76px 60px 28px; gap: 6px;
+  align-items: center; margin-bottom: 6px; }
+.est-cutout-row .input { padding: 5px 7px; font-size: 10.5px; }
+.est-x { text-align: center; font-size: 10px; color: var(--text-muted); }
+.est-empty-inline { font-size: 10.5px; color: var(--text-muted); font-style: italic; padding: 3px 0; }
+
+/* --- Area derivation + cost table --- */
+.est-cost { margin-top: 14px; }
+.est-area-strip { padding: 10px 12px; margin-bottom: 10px; border-radius: var(--radius-sm);
+  background: var(--bg-panel-alt); border: 1px solid var(--border); }
+.est-surfaces { list-style: none; margin: 0 0 8px; padding: 0; }
+.est-surfaces li { display: flex; align-items: baseline; gap: 8px; font-size: 10px;
+  color: var(--text-secondary); padding: 2px 0; }
+.est-surfaces li span { flex: 0 0 auto; font-weight: 700; }
+.est-surfaces li code { flex: 1; font-size: 9.5px; color: var(--text-muted); }
+.est-surfaces li b { color: var(--text-primary); }
+.est-area-math { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 7px;
+  border-top: 1px dashed var(--border-strong); font-size: 10.5px; color: var(--text-secondary); }
+.est-area-math b { color: var(--text-primary); }
+.est-net b { color: var(--accent); }
+
+.est-table { width: 100%; border-collapse: collapse; font-size: 10.5px; }
+.est-table th { text-align: left; font-size: 9px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--text-muted); padding: 6px 7px;
+  border-bottom: 1px solid var(--border-strong); }
+.est-table td { padding: 5px 7px; border-bottom: 1px solid var(--border); color: var(--text-secondary);
+  vertical-align: top; }
+.est-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.est-table .strong { font-weight: 800; color: var(--text-primary); }
+.est-code { font-size: 9px; font-weight: 800; color: var(--accent); letter-spacing: .03em; }
+/* The derivation line: deliberately quiet, but always present under the figure it produced. */
+.est-basis-row td { padding: 0 7px 6px 7px; font-size: 9px; line-height: 1.45; color: var(--text-muted);
+  border-bottom: 1px solid var(--border); font-style: italic; }
+.est-table tfoot td { border-bottom: none; padding-top: 7px; font-size: 11px; color: var(--text-secondary); }
+.est-total-row td { border-top: 1.5px solid var(--border-strong); font-size: 12px; font-weight: 800;
+  color: var(--text-primary); padding-top: 8px; }
+
+/* --- Master summary --- */
+.est-master { border: 1.5px solid var(--accent-border); border-radius: var(--radius-lg);
+  background: var(--bg-panel); padding: 16px; margin-top: 4px; box-shadow: var(--shadow-lg); }
+.est-master-head { display: flex; align-items: center; gap: 11px; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.est-master-head .icon { color: var(--accent); }
+.est-master-title { font-size: 14px; font-weight: 800; color: var(--text-primary); }
+.est-master-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 2px; }
+.est-table-master { margin-bottom: 14px; }
+
+.est-totals { border-top: 1.5px solid var(--border-strong); padding-top: 10px; }
+.est-total-line { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 5px 0; font-size: 11.5px; color: var(--text-secondary); }
+.est-total-line b { font-variant-numeric: tabular-nums; font-weight: 800; color: var(--text-primary); }
+.est-total-factory { border-top: 1px dashed var(--border-strong); margin-top: 5px; padding-top: 9px;
+  font-weight: 700; }
+.est-margin-line span { display: flex; align-items: center; gap: 6px; }
+.est-margin-input { width: 62px; padding: 4px 7px; font-size: 11px; text-align: right; }
+.est-total-selling { margin-top: 7px; padding: 11px 12px; border-radius: var(--radius-sm);
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 800; }
+.est-total-selling b { color: #fff; font-size: 16px; }
+
+.est-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+.est-check { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-secondary);
+  cursor: pointer; }
+.est-check input { accent-color: var(--accent); }
+.est-fineprint { margin: 9px 0 0; font-size: 9.5px; line-height: 1.55; color: var(--text-muted); }
+
+.est-lightbox { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center;
+  justify-content: center; padding: 36px; background: rgba(20, 19, 17, 0.86); cursor: zoom-out; }
+.est-lightbox img { max-width: 100%; max-height: 100%; border-radius: var(--radius-sm);
+  background: #fff; box-shadow: var(--shadow-lg); }
+
+/* The two-column split is the whole point of this view, so it holds as long as it can and
+   stacks only when the drawing would be too narrow to read. */
+@media (max-width: 1180px) {
+  .est-split { grid-template-columns: 1fr; }
+  .est-visual { border-right: none; border-bottom: 1px solid var(--border); }
+  .est-field-grid { grid-template-columns: repeat(2, 1fr); }
+}
