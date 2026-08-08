@@ -1,17 +1,17 @@
 {
   ".claude/launch.json": {
-    "mtime": 1785455299.1912224,
-    "ast_hash": "cda04f6a11cb9762246ed6046ad8e57d",
-    "semantic_hash": "cda04f6a11cb9762246ed6046ad8e57d"
+    "mtime": 1786183243.6576486,
+    "ast_hash": "28c78f6feee6644d3793342b2092392a",
+    "semantic_hash": ""
   },
   "app.js": {
-    "mtime": 1785513060.7579918,
-    "ast_hash": "5a6d100a7e8da30a44bc4c13dab7b849",
+    "mtime": 1786186684.3500967,
+    "ast_hash": "610d812f55adedc82038b348be3c38ed",
     "semantic_hash": ""
   },
   "app.py": {
-    "mtime": 1785529415.9503055,
-    "ast_hash": "70a8851e1f113f5c2d07e45737031d38",
+    "mtime": 1786186655.56099,
+    "ast_hash": "0a60e1531e9c5d31dbf080a86fe6658f",
     "semantic_hash": ""
   },
   "bundles.json": {
@@ -70,8 +70,8 @@
     "semantic_hash": "c4efb60c12948d792860ea8145f55475"
   },
   "index.html": {
-    "mtime": 1785492013.0714645,
-    "ast_hash": "c469479b24373e2ce621c21e508d0dab",
+    "mtime": 1786151157.4354806,
+    "ast_hash": "5ec6bd2593d8c87b8637477bd019ecb6",
     "semantic_hash": ""
   },
   "requirements.txt": {
@@ -102,6 +102,31 @@
   "sync_config.json": {
     "mtime": 1785510310.9023223,
     "ast_hash": "30ecc9a8bc60e371a99f40b6c817e4d3",
+    "semantic_hash": ""
+  },
+  "calculators.py": {
+    "mtime": 1786186610.5310738,
+    "ast_hash": "ace60071583468db50cb8c8c768c4896",
+    "semantic_hash": ""
+  },
+  "design_parser.py": {
+    "mtime": 1786150944.9111032,
+    "ast_hash": "f870d918d614ba272a5d4fa9b7eac537",
+    "semantic_hash": ""
+  },
+  "estimator_config.json": {
+    "mtime": 1786150458.0782917,
+    "ast_hash": "667b3022ed74c363f1bcfbc6a962fb30",
+    "semantic_hash": ""
+  },
+  "rate_card.py": {
+    "mtime": 1786186767.1892917,
+    "ast_hash": "b6173a0ceb20be4ac16e74d1b2fbc44e",
+    "semantic_hash": ""
+  },
+  "README.md": {
+    "mtime": 1786186021.1632109,
+    "ast_hash": "2e3a8035c8179554d5d36304e63cab4e",
     "semantic_hash": ""
   }
 }

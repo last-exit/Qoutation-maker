@@ -889,20 +889,56 @@ class QuotationApi:
 
             items, errors = [], []
             for index, spec in enumerate(specs):
+                label = spec.get("label") or f"Item {index + 1}"
                 try:
-                    items.append(calculators.compute_item_boq(spec, card))
+                    boq = calculators.compute_item_boq(spec, card)
+                    boq["spec_index"] = index
+                    items.append(boq)
                 except rate_card.MissingRateError as exc:
-                    # A missing code is a data problem the PM can fix in the CSV; naming the
-                    # item beats failing the whole batch with a bare KeyError.
-                    errors.append(f"{spec.get('label') or f'Item {index + 1}'}: {exc}")
+                    # A missing code is a data problem the PM can fix from the UI right here —
+                    # naming the item and the code beats failing the whole batch with a bare
+                    # KeyError, and lets the frontend offer a one-click "add this material".
+                    errors.append({
+                        "index": index, "label": label,
+                        "code": getattr(exc, "code", None), "message": str(exc),
+                    })
                 except Exception as exc:
-                    errors.append(f"{spec.get('label') or f'Item {index + 1}'}: {exc}")
+                    errors.append({"index": index, "label": label, "code": None, "message": str(exc)})
 
             if not items:
-                return {"success": False, "error": "; ".join(errors) or "Nothing could be costed."}
+                joined = "; ".join(e["message"] for e in errors)
+                return {"success": False, "error": joined or "Nothing could be costed."}
 
             summary = calculators.aggregate(items, margin_pct, card)
             return {"success": True, "items": items, "summary": summary, "errors": errors}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def add_rate_card_item(self, payload):
+        """Adds a new material row to the master rate card CSV from the estimator UI.
+
+        Called when a BOQ line references a code the card doesn't have — the PM names,
+        categorizes and prices it here instead of leaving the item permanently unpriced
+        or hand-editing the CSV outside the app.
+        """
+        try:
+            payload = payload or {}
+            card = rate_card.add_rate_card_item(
+                code=payload.get("code"),
+                description=payload.get("description"),
+                unit=payload.get("unit") or "Unit",
+                avg_cost=payload.get("avg_cost"),
+                category=payload.get("category") or "Uncategorized",
+                usage=payload.get("usage") or "",
+            )
+            options = calculators.options_payload(card)
+            options["ocr"] = design_parser.ocr_status()
+            options["rate_card"] = {
+                "source": card.source_path.name,
+                "item_count": len(card.items),
+                "categories": card.categories(),
+            }
+            return {"success": True, "options": options}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -921,7 +957,27 @@ class QuotationApi:
 
             card = rate_card.get_rate_card()
             margin_pct = (payload or {}).get("margin_pct")
-            items = [calculators.compute_item_boq(spec, card) for spec in specs]
+
+            items, blocked = [], []
+            for index, spec in enumerate(specs):
+                label = spec.get("label") or f"Item {index + 1}"
+                try:
+                    boq = calculators.compute_item_boq(spec, card)
+                except rate_card.MissingRateError as exc:
+                    blocked.append(f"{label}: {exc}")
+                    continue
+                if boq["needs_dimensions"]:
+                    blocked.append(f"{label}: {boq['dimension_message']}")
+                    continue
+                items.append(boq)
+
+            if blocked:
+                # A zero-cost line on the client quotation reads as a free item, which is
+                # the one failure mode worse than making the PM go back and fix it first.
+                return {"success": False, "error": "Fix before merging — " + "; ".join(blocked)}
+            if not items:
+                return {"success": False, "error": "No priced items to merge."}
+
             summary = calculators.aggregate(items, margin_pct, card)
 
             client_rows = calculators.to_quotation_items(items, summary, mode="client")

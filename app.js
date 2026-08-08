@@ -1461,6 +1461,7 @@ function pickDesignFiles() {
         estimatorSpecs.push(Object.assign({}, page.detected, {
           substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
           cutouts: (page.detected.cutouts || []).map(c => Object.assign({}, c)),
+          rate_overrides: {}, labor_rate_overrides: {},
           source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
         }));
       });
@@ -1689,24 +1690,108 @@ function recalcEstimate() {
       estimatorResults = res.items;
       estimatorSummary = res.summary;
 
-      res.items.forEach(function (item, idx) {
-        const target = document.getElementById(`est-cost-${idx}`);
-        if (target) target.innerHTML = renderItemCost(item);
+      // Failed specs are dropped from res.items rather than left as placeholders, so the
+      // array no longer lines up 1:1 with estimatorSpecs — match on the index the backend
+      // stamped onto each item instead of relying on array position.
+      res.items.forEach(function (item) {
+        const target = document.getElementById(`est-cost-${item.spec_index}`);
+        if (target) target.innerHTML = renderItemCost(item, item.spec_index);
       });
-      (res.errors || []).forEach(e => showToast(e, 'warning'));
+
+      (res.errors || []).forEach(function (e) {
+        const target = document.getElementById(`est-cost-${e.index}`);
+        if (target) {
+          target.innerHTML = e.code
+            ? estMissingMaterialForm(e.index, e.code, e.message)
+            : `<div class="est-notice est-notice-error">${icon('alert', 'icon-sm')}<span>${esc(e.message)}</span></div>`;
+        }
+        showToast(`${e.label}: ${e.message}`, 'warning');
+      });
+
       renderEstimatorSummary();
     }).catch(function (err) {
       showToast('Costing failed: ' + err, 'error');
     });
 }
 
-function renderItemCost(item) {
+function estMissingMaterialForm(idx, code, message) {
+  return `
+    <div class="est-notice est-notice-error">${icon('alert', 'icon-sm')}<span>${esc(message)}</span></div>
+    <div class="est-add-material">
+      <div class="est-subhead"><span>Add “${esc(code)}” to the rate card</span></div>
+      <div class="est-add-material-grid">
+        <input type="text" class="input" id="est-mat-desc-${idx}" placeholder="Description">
+        <input type="text" class="input" id="est-mat-cat-${idx}" placeholder="Category" value="Uncategorized">
+        <input type="text" class="input" id="est-mat-unit-${idx}" placeholder="Unit" value="Unit">
+        <input type="number" class="input" id="est-mat-cost-${idx}" placeholder="Avg cost (AED)" min="0" step="0.01">
+        <button class="btn btn-primary btn-xs" onclick="estAddMaterial(${idx},'${esc(code)}')">
+          ${icon('plus', 'icon-sm')} Add &amp; price
+        </button>
+      </div>
+    </div>`;
+}
+
+function estAddMaterial(idx, code) {
+  const descEl = document.getElementById(`est-mat-desc-${idx}`);
+  const catEl = document.getElementById(`est-mat-cat-${idx}`);
+  const unitEl = document.getElementById(`est-mat-unit-${idx}`);
+  const costEl = document.getElementById(`est-mat-cost-${idx}`);
+  const cost = parseFloat(costEl.value);
+  if (!cost || cost <= 0) { showToast('Enter a cost greater than 0 for ' + code + '.', 'warning'); return; }
+
+  api().add_rate_card_item({
+    code: code,
+    description: (descEl.value || '').trim(),
+    category: (catEl.value || '').trim() || 'Uncategorized',
+    unit: (unitEl.value || '').trim() || 'Unit',
+    avg_cost: cost,
+  }).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not add material.', 'error'); return; }
+    estimatorOptions = res.options;
+    const badge = document.getElementById('est-ratecard-badge');
+    if (badge) badge.innerText = `${estimatorOptions.rate_card.item_count} rates · ${estimatorOptions.rate_card.source}`;
+    showToast(`${code} added to the rate card.`, 'success');
+    recalcEstimate();
+  }).catch(function (err) {
+    showToast('Could not add material: ' + err, 'error');
+  });
+}
+
+function estSetRate(idx, code, value) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  spec.rate_overrides = spec.rate_overrides || {};
+  const num = parseFloat(value);
+  if (isNaN(num) || num < 0) delete spec.rate_overrides[code];
+  else spec.rate_overrides[code] = num;
+  recalcEstimate();
+}
+
+function estSetLaborRate(idx, trade, value) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  spec.labor_rate_overrides = spec.labor_rate_overrides || {};
+  const num = parseFloat(value);
+  if (isNaN(num) || num < 0) delete spec.labor_rate_overrides[trade];
+  else spec.labor_rate_overrides[trade] = num;
+  recalcEstimate();
+}
+
+function renderItemCost(item, idx) {
+  if (item.needs_dimensions) {
+    return `<div class="est-notice est-notice-warning">${icon('alert', 'icon-sm')}<span>${esc(item.dimension_message)}</span></div>`;
+  }
+
   const materialRows = item.materials.map(m => `
     <tr>
       <td><span class="est-code">${esc(m.code)}</span> ${esc(m.description)}</td>
       <td class="num">${m.qty}</td>
       <td>${esc(m.unit)}</td>
-      <td class="num">${money(m.unit_cost)}</td>
+      <td class="num">
+        <input type="number" class="input est-rate-input" min="0" step="0.01" value="${m.unit_cost}"
+               title="Card rate: ${money(m.default_cost)}${m.unit_cost !== m.default_cost ? ' (overridden)' : ''}"
+               onchange="estSetRate(${idx},'${m.code}',this.value)">
+      </td>
       <td class="num strong">${money(m.line_cost)}</td>
     </tr>
     <tr class="est-basis-row"><td colspan="5">${esc(m.basis)}</td></tr>`).join('');
@@ -1716,7 +1801,10 @@ function renderItemCost(item) {
       <td>Labor — ${esc(l.trade)}</td>
       <td class="num">${l.hours}</td>
       <td>Hrs</td>
-      <td class="num">${money(l.rate)}</td>
+      <td class="num">
+        <input type="number" class="input est-rate-input" min="0" step="0.01" value="${l.rate}"
+               onchange="estSetLaborRate(${idx},'${l.trade}',this.value)">
+      </td>
       <td class="num strong">${money(l.cost)}</td>
     </tr>
     <tr class="est-basis-row"><td colspan="5">${esc(l.basis)}</td></tr>`).join('');

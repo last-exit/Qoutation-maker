@@ -139,6 +139,19 @@ DEFAULT_ITEM_TYPE = "wall"
 # Sensible fallbacks when a drawing gives a plan dimension but no depth.
 DEFAULT_DEPTH_M = {"wall": 0.20, "counter": 0.60, "stage": 3.00, "arch": 0.30}
 
+# The dimensions each item type needs a real (>0) value for before it has any clad area at
+# all. Depth is deliberately excluded everywhere except stage — depth always has a usable
+# default (DEFAULT_DEPTH_M) once length/height give the item a real face, so a missing depth
+# is a reasonable guess but a missing length or height is not: pricing a 0 m2 face and its
+# framing off a phantom rectangle is the "wrong estimation" failure mode, not a helpful guess.
+REQUIRED_DIMS = {
+    "wall": ("length_m", "height_m"),
+    "counter": ("length_m", "height_m", "depth_m"),
+    "stage": ("length_m", "depth_m"),
+    "arch": ("length_m", "height_m"),
+}
+_DIM_LABELS = {"length_m": "Length", "height_m": "Height", "depth_m": "Depth"}
+
 
 # --- Finish systems -------------------------------------------------------------------
 # Each finish is a recipe of rate-card codes with the coverage math that sizes them.
@@ -318,11 +331,17 @@ def paint_liters(area_m2, coverage_m2_per_l, coats):
 
 # --- BOQ assembly ---------------------------------------------------------------------
 
-def _line(card, code, qty, basis, category=None):
+def _line(card, code, qty, basis, category=None, override_cost=None):
     """Prices one material line against the rate card. qty is rounded up to whole
-    purchase units — you cannot buy 0.4 of a sheet."""
+    purchase units — you cannot buy 0.4 of a sheet.
+
+    `override_cost`, when given, is a PM-entered rate that wins over the card's price for
+    this line only; `default_cost` is still carried so the UI can show what the card says
+    and let the PM reset back to it.
+    """
     item = card.get(code)
     whole_qty = int(math.ceil(qty - 1e-9)) if qty > 0 else 0
+    unit_cost = item.avg_cost if override_cost is None else max(0.0, float(override_cost))
     return {
         "code": code,
         "description": item.description,
@@ -330,10 +349,21 @@ def _line(card, code, qty, basis, category=None):
         "unit": item.unit,
         "qty": whole_qty,
         "raw_qty": round(qty, 3),
-        "unit_cost": item.avg_cost,
-        "line_cost": round(whole_qty * item.avg_cost, 2),
+        "unit_cost": unit_cost,
+        "default_cost": item.avg_cost,
+        "line_cost": round(whole_qty * unit_cost, 2),
         "basis": basis,
     }
+
+
+def dimension_message(item_type, spec):
+    """Names the specific fields still needed before an item type has any clad area."""
+    required = REQUIRED_DIMS.get(item_type, REQUIRED_DIMS[DEFAULT_ITEM_TYPE])
+    missing = [_DIM_LABELS[f] for f in required if float(spec.get(f) or 0.0) <= 0]
+    label = ITEM_TYPES.get(item_type, ITEM_TYPES[DEFAULT_ITEM_TYPE])["label"]
+    if not missing:
+        return f"Enter dimensions to price this {label}."
+    return f"Enter {' and '.join(missing)} to price this {label} — drawing gave no usable value."
 
 
 def compute_item_boq(spec, card=None):
@@ -362,14 +392,67 @@ def compute_item_boq(spec, card=None):
     if not card.has(framing):
         framing = DEFAULT_FRAMING
 
+    rate_overrides = spec.get("rate_overrides") or {}
+    labor_rate_overrides = spec.get("labor_rate_overrides") or {}
+
+    def line(code, qty, basis, category=None):
+        return _line(card, code, qty, basis, category, rate_overrides.get(code))
+
+    def labor_rate(trade):
+        if trade in labor_rate_overrides:
+            return max(0.0, float(labor_rate_overrides[trade]))
+        return card.labor_rate(trade)
+
     surfaces, gross_m2, cutout_m2, net_m2 = net_surface_area(spec)
+
+    # No clad face means nothing to build: pricing framing/hardware off a degenerate
+    # rectangle (e.g. a length with no height) produces a cost for zero actual material,
+    # which reads as a real number but is not one. Stop here and ask for the dimension
+    # instead of guessing — the PM enters it in the same fields, this just refuses to
+    # fabricate a number until they do.
+    if gross_m2 <= 0:
+        return {
+            "label": spec.get("label") or type_meta["label"],
+            "item_type": item_type,
+            "item_type_label": type_meta["label"],
+            "quantity": quantity,
+            "dimensions": {
+                "length_m": round(float(spec.get("length_m") or 0.0), 3),
+                "height_m": round(float(spec.get("height_m") or 0.0), 3),
+                "depth_m": round(float(spec.get("depth_m") or 0.0), 3),
+                "faces": int(spec.get("faces") or 1),
+            },
+            "substrate": substrate,
+            "framing": framing,
+            "finish": finish_key,
+            "finish_label": finish["label"],
+            "surfaces": [],
+            "gross_area_m2": 0.0,
+            "cutout_area_m2": 0.0,
+            "net_area_m2": 0.0,
+            "cutouts": spec.get("cutouts") or [],
+            "materials": [],
+            "labor": [],
+            "unit_material_cost": 0.0,
+            "unit_labor_cost": 0.0,
+            "unit_labor_hours": 0.0,
+            "unit_factory_cost": 0.0,
+            "material_cost": 0.0,
+            "labor_cost": 0.0,
+            "labor_hours": 0.0,
+            "factory_cost": 0.0,
+            "needs_dimensions": True,
+            "dimension_message": dimension_message(item_type, spec),
+            "source": spec.get("source") or {},
+        }
+
     materials = []
 
     # --- Substrate boards -------------------------------------------------------
     sheet_count, area_with_wastage = sheets_required(net_m2)
     if sheet_count:
-        materials.append(_line(
-            card, substrate, sheet_count,
+        materials.append(line(
+            substrate, sheet_count,
             f"{net_m2:.2f} m2 net x {1 + WASTAGE_FACTOR:.2f} wastage = {area_with_wastage:.2f} m2 "
             f"/ {SHEET_AREA_M2} m2 per sheet -> {sheet_count} sheets",
         ))
@@ -391,7 +474,7 @@ def compute_item_boq(spec, card=None):
             f" = {linear_m:.2f} m x {1 + WASTAGE_FACTOR:.2f} "
             f"/ {STUD_PIECE_LEN_M} m per piece -> {stud_pieces} pieces"
         )
-        materials.append(_line(card, framing, stud_pieces, basis))
+        materials.append(line(framing, stud_pieces, basis))
 
     # --- Finish system ----------------------------------------------------------
     for component in finish["components"]:
@@ -403,16 +486,16 @@ def compute_item_boq(spec, card=None):
         if mode == "sheet":
             count, with_waste = sheets_required(net_m2)
             if count:
-                materials.append(_line(
-                    card, code, count,
+                materials.append(line(
+                    code, count,
                     f"{net_m2:.2f} m2 x {1 + WASTAGE_FACTOR:.2f} = {with_waste:.2f} m2 "
                     f"/ {SHEET_AREA_M2} m2 per sheet -> {count} sheets",
                 ))
         elif mode == "sqm":
             qty = net_m2 * (1.0 + WASTAGE_FACTOR)
             if qty > 0:
-                materials.append(_line(
-                    card, code, qty,
+                materials.append(line(
+                    code, qty,
                     f"{net_m2:.2f} m2 x {1 + WASTAGE_FACTOR:.2f} wastage = {qty:.2f} m2",
                 ))
         elif mode == "liters":
@@ -420,8 +503,8 @@ def compute_item_boq(spec, card=None):
             unit_size = component.get("unit_size_l", 1.0)
             units = litres / unit_size if unit_size else litres
             if units > 0:
-                materials.append(_line(
-                    card, code, units,
+                materials.append(line(
+                    code, units,
                     f"{net_m2:.2f} m2 x {component['coats']} coats "
                     f"/ {component['coverage_m2_per_l']} m2 per L = {litres:.2f} L "
                     f"/ {unit_size:g} L per unit -> {math.ceil(units)}",
@@ -430,8 +513,8 @@ def compute_item_boq(spec, card=None):
             per_unit = component.get("m2_per_unit", 1.0)
             units = net_m2 / per_unit if per_unit else 0.0
             if units > 0:
-                materials.append(_line(
-                    card, code, units,
+                materials.append(line(
+                    code, units,
                     f"{net_m2:.2f} m2 / {per_unit:g} m2 per unit -> {math.ceil(units)}",
                 ))
 
@@ -440,22 +523,22 @@ def compute_item_boq(spec, card=None):
         joints = stud_pieces * SCREWS_PER_STUD_JOINT
         boxes = joints / SCREWS_PER_BOX
         if boxes > 0:
-            materials.append(_line(
-                card, "HW-SCR-BLK", boxes,
+            materials.append(line(
+                "HW-SCR-BLK", boxes,
                 f"{stud_pieces} stud pieces x {SCREWS_PER_STUD_JOINT} screws = {joints} "
                 f"/ {SCREWS_PER_BOX} per box -> {math.ceil(boxes)}",
             ))
         brackets = stud_pieces * BRACKETS_PER_STUD_PIECE
-        materials.append(_line(
-            card, "HW-LBR-05", brackets,
+        materials.append(line(
+            "HW-LBR-05", brackets,
             f"{stud_pieces} stud pieces x {BRACKETS_PER_STUD_PIECE} brackets -> {brackets}",
         ))
 
     if net_m2 > 0 and card.has("AD-WD-05L"):
         cans = net_m2 / WOOD_GLUE_M2_PER_CAN
         if cans > 0:
-            materials.append(_line(
-                card, "AD-WD-05L", cans,
+            materials.append(line(
+                "AD-WD-05L", cans,
                 f"{net_m2:.2f} m2 / {WOOD_GLUE_M2_PER_CAN:g} m2 per can -> {math.ceil(cans)}",
             ))
 
@@ -464,13 +547,13 @@ def compute_item_boq(spec, card=None):
         led_m = float(spec["led_meters"])
         rolls = led_m / 5.0
         if rolls > 0:
-            materials.append(_line(
-                card, "EL-LED-12W", rolls,
+            materials.append(line(
+                "EL-LED-12W", rolls,
                 f"{led_m:.2f} m LED / 5 m per roll -> {math.ceil(rolls)}",
             ))
             drivers = math.ceil((led_m * 12.0) / 200.0)  # ~12W/m against a 200W driver
-            materials.append(_line(
-                card, "EL-TRN-200", drivers,
+            materials.append(line(
+                "EL-TRN-200", drivers,
                 f"{led_m:.2f} m x 12 W/m = {led_m * 12:.0f} W / 200 W per driver -> {drivers}",
             ))
 
@@ -478,7 +561,7 @@ def compute_item_boq(spec, card=None):
     labor = []
     carpentry_hours = net_m2 * type_meta["carpentry_hr_m2"]
     if carpentry_hours > 0:
-        rate = card.labor_rate("carpentry")
+        rate = labor_rate("carpentry")
         labor.append({
             "trade": "carpentry",
             "hours": round(carpentry_hours, 2),
@@ -490,7 +573,7 @@ def compute_item_boq(spec, card=None):
     painting_hr_m2 = finish.get("painting_hr_m2", 0.0)
     if painting_hr_m2 > 0 and net_m2 > 0:
         hours = net_m2 * painting_hr_m2
-        rate = card.labor_rate("painting")
+        rate = labor_rate("painting")
         labor.append({
             "trade": "painting",
             "hours": round(hours, 2),
@@ -502,7 +585,7 @@ def compute_item_boq(spec, card=None):
     finishing_hr_m2 = finish.get("finishing_hr_m2", 0.0)
     if finishing_hr_m2 > 0 and net_m2 > 0:
         hours = net_m2 * finishing_hr_m2
-        rate = card.labor_rate("finishing")
+        rate = labor_rate("finishing")
         labor.append({
             "trade": "finishing",
             "hours": round(hours, 2),
@@ -513,7 +596,7 @@ def compute_item_boq(spec, card=None):
 
     if stud_pieces:
         assembly_hours = stud_pieces * 0.25
-        rate = card.labor_rate("assembly")
+        rate = labor_rate("assembly")
         labor.append({
             "trade": "assembly",
             "hours": round(assembly_hours, 2),
@@ -524,7 +607,7 @@ def compute_item_boq(spec, card=None):
 
     if spec.get("led_meters"):
         elec_hours = float(spec["led_meters"]) * 0.15
-        rate = card.labor_rate("electrical")
+        rate = labor_rate("electrical")
         labor.append({
             "trade": "electrical",
             "hours": round(elec_hours, 2),
@@ -571,6 +654,7 @@ def compute_item_boq(spec, card=None):
         "labor_cost": round(unit_labor_cost * quantity, 2),
         "labor_hours": round(unit_labor_hours * quantity, 2),
         "factory_cost": round((unit_material_cost + unit_labor_cost) * quantity, 2),
+        "needs_dimensions": False,
         "source": spec.get("source") or {},
     }
 

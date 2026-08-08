@@ -153,10 +153,12 @@ class RateCard:
         """Returns the RateItem for `code`, or raises MissingRateError."""
         item = self.items.get(code)
         if item is None:
-            raise MissingRateError(
+            err = MissingRateError(
                 f"Item code '{code}' is not in the rate card ({self.source_path.name}). "
                 f"Add a row for it, or point the estimator at a different code."
             )
+            err.code = code
+            raise err
         return item
 
     def cost_of(self, code):
@@ -313,6 +315,69 @@ def load_rate_card(path=None):
 # the new numbers on the next calculation without restarting the desktop app.
 
 _cache = {"card": None, "mtime": None, "path": None}
+
+
+def add_rate_card_item(code, description, unit, avg_cost, category="Uncategorized",
+                        low=None, high=None, usage="", path=None):
+    """Appends a new priced row to the rate card CSV and reloads the cache.
+
+    Used when the estimator hits a material code the card doesn't know about: the PM
+    names and prices it once here, in the same file every other row lives in, so it
+    resolves like any other code from then on — no separate "unlisted materials" table
+    to fall out of sync with the real source of truth.
+    """
+    code = (code or "").strip().upper()
+    if not code:
+        raise ValueError("Item code is required.")
+    try:
+        avg_cost = float(avg_cost)
+    except (TypeError, ValueError):
+        raise ValueError("Cost must be a number.")
+    if avg_cost <= 0:
+        raise ValueError("Cost must be greater than zero.")
+
+    card_path = _resolve_card_path(path)
+    existing = get_rate_card(card_path)
+    if existing.has(code):
+        raise ValueError(f"Item code '{code}' already exists in the rate card.")
+
+    low = float(low) if low else avg_cost
+    high = float(high) if high else avg_cost
+
+    with open(card_path, "r", encoding="utf-8-sig", newline="") as handle:
+        fieldnames = csv.DictReader(handle).fieldnames
+
+    columns = _build_column_map(fieldnames)
+    row = {name: "" for name in fieldnames}
+    row[columns.get("code", fieldnames[0])] = code
+    if "category" in columns:
+        row[columns["category"]] = category or "Uncategorized"
+    if "description" in columns:
+        row[columns["description"]] = description or code
+    if "unit" in columns:
+        row[columns["unit"]] = unit or "Unit"
+    if "avg" in columns:
+        row[columns["avg"]] = f"{avg_cost:.2f}"
+    if "range" in columns:
+        row[columns["range"]] = f"{low:.2f} - {high:.2f}"
+    if "usage" in columns:
+        row[columns["usage"]] = usage or ""
+
+    # The shipped file has no trailing newline on its last row (a quirk of the export that
+    # produced it), so appending blind would splice our new row onto the end of the old
+    # last line instead of starting a fresh one. Check and fix that before writing.
+    needs_leading_newline = False
+    if card_path.stat().st_size > 0:
+        with open(card_path, "rb") as handle:
+            handle.seek(-1, os.SEEK_END)
+            needs_leading_newline = handle.read(1) not in (b"\n", b"\r")
+
+    with open(card_path, "a", encoding="utf-8", newline="") as handle:
+        if needs_leading_newline:
+            handle.write("\n")
+        csv.DictWriter(handle, fieldnames=fieldnames).writerow(row)
+
+    return get_rate_card(card_path, force=True)
 
 
 def get_rate_card(path=None, force=False):

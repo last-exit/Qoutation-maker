@@ -721,6 +721,14 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
 .est-basis-row td { padding: 0 7px 6px 7px; font-size: 9px; line-height: 1.45; color: var(--text-muted);
   border-bottom: 1px solid var(--border); font-style: italic; }
 .est-table tfoot td { border-bottom: none; padding-top: 7px; font-size: 11px; color: var(--text-secondary); }
+.est-rate-input { width: 78px; padding: 4px 6px; font-size: 10.5px; text-align: right; }
+
+/* --- Missing-material quick-add --- */
+.est-add-material { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--bg-panel-alt); border: 1px solid var(--border); }
+.est-add-material-grid { display: grid; grid-template-columns: 1.4fr 1fr 0.7fr 1fr auto;
+  gap: 6px; margin-top: 8px; }
+.est-add-material-grid .input { padding: 5px 7px; font-size: 10.5px; }
 .est-total-row td { border-top: 1.5px solid var(--border-strong); font-size: 12px; font-weight: 800;
   color: var(--text-primary); padding-top: 8px; }
 
