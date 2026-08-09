@@ -38,12 +38,57 @@ works via `project` tasks with dates; drag-and-drop resource planning needs Ente
 
 ## Running it
 
+Double-click **`run-odoo.command`** in the project root. It starts the Docker VM if it is not
+already up, starts the containers, waits until Odoo actually answers, and opens the browser.
+Safe to run when everything is already running.
+
+**`stop-odoo.command`** stops it again. Data lives in Docker volumes, not in the containers,
+so stopping loses nothing.
+
+From a terminal instead:
+
 ```bash
-cd odoo
-docker compose up -d
+colima start          # the Linux VM the containers run in; only needed after a reboot
+cd odoo && docker compose up -d
 ```
 
-Then open <http://127.0.0.1:8069>. Credentials are in `odoo/.env`, which is gitignored.
+Then open <http://127.0.0.1:8069> and log in as **admin**. The password is
+`ODOO_ADMIN_PASSWORD` in `odoo/.env`, which is gitignored.
+
+### Where things are
+
+Everything custom is under the **Price Archive** app in the top-left app menu:
+
+| Menu | What it is |
+|---|---|
+| Archive → Search Archive | Describe a structure, see what comparable work was quoted at |
+| Archive → Price Archive | All indexed historical line items |
+| Archive → Source Documents | Every document read, with how many lines and photos it gave |
+| Archive → Index Archive | Re-read the quotation folder. Incremental — unchanged files are skipped |
+| Archive → Import Desktop Data | One-time import of the old app's clients, catalog and history |
+| Review → Needs Review | Items the parser could not read confidently |
+| Review → Corrections | Fixes that survive re-indexing, and which fields each one pins |
+
+Quoting happens in the standard **Sales** app. Open a quotation and use the **Price from
+Archive** button in the top-right button box to search the archive and pull priced lines in.
+Print with the **Quotation** report.
+
+### Common tasks
+
+```bash
+cd odoo
+
+docker compose logs -f odoo            # watch the log
+docker compose restart odoo            # after changing addon Python
+docker compose exec odoo odoo -d redcube -u redcube_price_intelligence --stop-after-init
+                                       # reload the addon after changing views or models
+docker compose exec odoo odoo -d redcube --test-enable \
+    --test-tags redcube_price_intelligence -u redcube_price_intelligence \
+    --stop-after-init --http-port 8099 # run the addon tests
+```
+
+The test command uses a different port on purpose: the running instance already holds 8069,
+and Odoo exits with "Address already in use" otherwise.
 
 First-time setup on a fresh machine:
 
