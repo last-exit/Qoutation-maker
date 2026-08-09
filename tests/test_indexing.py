@@ -91,3 +91,69 @@ def test_distance_to_similarity_endpoints():
 def test_distance_to_similarity_survives_garbage():
     import app
     assert app._distance_to_similarity(None) == 0.0
+
+
+# --- Fresh install ----------------------------------------------------------------------
+
+def test_model_is_fetched_when_missing(tmp_path, monkeypatch):
+    """A fresh clone has no models/ directory and no torch. Without the download it installs
+    cleanly and then cannot search at all."""
+    import embedder
+
+    monkeypatch.setattr(embedder, "ONNX_DIR", tmp_path / "all-MiniLM-L6-v2")
+    monkeypatch.setattr(embedder, "ONNX_MODEL", tmp_path / "all-MiniLM-L6-v2" / "model.onnx")
+    monkeypatch.setattr(embedder, "TOKENIZER_JSON", tmp_path / "all-MiniLM-L6-v2" / "tokenizer.json")
+    assert embedder.onnx_available() is False
+
+    fetched = []
+
+    def fake_retrieve(url, destination):
+        fetched.append(url)
+        # Big enough to clear the truncation guard.
+        open(destination, "wb").write(b"x" * (embedder.MIN_MODEL_BYTES + 1))
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlretrieve", fake_retrieve)
+
+    assert embedder.download_model() is True
+    assert len(fetched) == 2
+    assert embedder.onnx_available() is True
+
+
+def test_a_truncated_download_is_rejected(tmp_path, monkeypatch):
+    """A half-file cached in place would fail confusingly at load time instead."""
+    import embedder
+
+    monkeypatch.setattr(embedder, "ONNX_DIR", tmp_path / "m")
+    monkeypatch.setattr(embedder, "ONNX_MODEL", tmp_path / "m" / "model.onnx")
+    monkeypatch.setattr(embedder, "TOKENIZER_JSON", tmp_path / "m" / "tokenizer.json")
+
+    def short_retrieve(url, destination):
+        open(destination, "wb").write(b"x" * 5000)
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlretrieve", short_retrieve)
+
+    with pytest.raises(RuntimeError, match="truncated"):
+        embedder.download_model()
+    assert not embedder.ONNX_MODEL.exists(), "the bad file must not be left behind"
+
+
+def test_fresh_install_chooses_onnx_and_downloads(tmp_path, monkeypatch):
+    """Falling back to sentence-transformers when the model is absent would pick a backend
+    whose dependency is not installed, and the download would never fire."""
+    import embedder
+
+    monkeypatch.setattr(embedder, "ONNX_DIR", tmp_path / "m")
+    monkeypatch.setattr(embedder, "ONNX_MODEL", tmp_path / "m" / "model.onnx")
+    monkeypatch.setattr(embedder, "TOKENIZER_JSON", tmp_path / "m" / "tokenizer.json")
+    monkeypatch.setattr(embedder, "_instance", None)
+    monkeypatch.delenv("QE_EMBEDDER", raising=False)
+
+    called = []
+    monkeypatch.setattr(embedder, "download_model", lambda *a, **k: called.append(1))
+    # Stop before the real session load; the choice of backend is what is under test.
+    monkeypatch.setattr(embedder, "OnnxEmbedder", lambda: type("E", (), {"backend": "onnx"})())
+
+    assert embedder.get_embedder().backend == "onnx"
+    assert called, "the missing model should have triggered a download"

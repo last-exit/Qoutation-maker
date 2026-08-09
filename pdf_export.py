@@ -2,6 +2,27 @@
 import os
 
 
+def pdf_available():
+    """Whether this machine can turn a document into a PDF.
+
+    Checked so the app can say so up front. Discovering it at the moment a quotation is being
+    sent to a client is the wrong time to learn that PDFs are not available here.
+    """
+    import shutil
+    import sys
+
+    if sys.platform == "darwin":
+        return bool(shutil.which("soffice")) or os.path.exists(
+            "/Applications/LibreOffice.app/Contents/MacOS/soffice")
+    if sys.platform == "win32":
+        try:
+            import win32com  # noqa: F401
+            return True
+        except ImportError:
+            return False
+    return bool(shutil.which("libreoffice")) or bool(shutil.which("soffice"))
+
+
 def convert_to_pdf(input_path):
     """Converts an xlsx/docx file to PDF using the installed MS Office application via COM.
 

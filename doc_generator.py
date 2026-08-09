@@ -913,16 +913,20 @@ def generate_word_dynamic(items, meta, output_path):
     valid_until = meta.get("valid_until") or compute_valid_until(quote_date)
     pm_name = meta.get("pm_name") or COMPANY.get("pm_name", "")
     quote_ref = meta.get("quote_ref", "")
+    # The same generator produces quotations and invoices. They differ in wording, not in
+    # layout, so the labels are driven from meta rather than duplicating 200 lines.
+    doc_kind = str(meta.get("doc_kind") or "QUOTATION").upper()
+    is_invoice = doc_kind == "INVOICE"
 
-    # --- Masthead: logo left, company identity right ---------------------------------
+    # --- Masthead: company identity left, logo right ---------------------------------
     head = doc.add_table(rows=1, cols=2)
     _no_borders(head)
-    _set_col_widths(head, [5.0, 12.6])
+    _set_col_widths(head, [12.6, 5.0])
     head.rows[0].cells[0].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
     head.rows[0].cells[1].vertical_alignment = WD_ALIGN_VERTICAL.CENTER
 
     logo = _load_logo_scaled(max_width=300, max_height=140)
-    logo_cell = head.rows[0].cells[0]
+    logo_cell = head.rows[0].cells[1]
     logo_cell.text = ""
     if logo:
         logo_stream, logo_w, _ = logo
@@ -930,12 +934,14 @@ def generate_word_dynamic(items, meta, output_path):
         # a small crisp mark reads as more professional than a large soft one. Drop a
         # higher-resolution file into assets/ and it will render larger automatically.
         target_cm = max(1.7, min(3.2, (logo_w / LOGO_TARGET_DPI) * 2.54))
-        logo_cell.paragraphs[0].add_run().add_picture(logo_stream, width=Cm(target_cm))
+        logo_para = logo_cell.paragraphs[0]
+        logo_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        logo_para.add_run().add_picture(logo_stream, width=Cm(target_cm))
 
-    ident = head.rows[0].cells[1]
+    ident = head.rows[0].cells[0]
     ident.text = ""
     name_para = ident.paragraphs[0]
-    name_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    name_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     name_para.paragraph_format.space_after = Pt(0)
     name_run = name_para.add_run(COMPANY["name"])
     name_run.bold = True
@@ -945,9 +951,11 @@ def generate_word_dynamic(items, meta, output_path):
     _set_char_spacing(name_run, 30)
 
     tag_para = ident.add_paragraph()
-    tag_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    tag_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
     tag_para.paragraph_format.space_before = Pt(1)
-    tag_run = tag_para.add_run(COMPANY.get("tagline") or "Quotation & Cost Estimate")
+    tag_run = tag_para.add_run(
+        "Tax Invoice" if is_invoice
+        else (COMPANY.get("tagline") or "Quotation & Cost Estimate"))
     tag_run.font.size = Pt(9)
     tag_run.italic = True
     tag_run.font.color.rgb = muted_rgb
@@ -955,7 +963,7 @@ def generate_word_dynamic(items, meta, output_path):
     for line in (COMPANY.get("address"), COMPANY.get("contact")):
         if line:
             c = ident.add_paragraph()
-            c.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+            c.alignment = WD_ALIGN_PARAGRAPH.LEFT
             c.paragraph_format.space_before = Pt(0)
             r = c.add_run(str(line))
             r.font.size = Pt(8)
@@ -964,9 +972,14 @@ def generate_word_dynamic(items, meta, output_path):
     _rule(doc, COMPANY["accent_hex"], size=18, space_after=10)
 
     # --- Detail block: two label/value pairs per row, no visible grid -----------------
-    details = [("Quote Ref", quote_ref), ("Date", quote_date),
-               ("Client", meta.get("client_name", "")), ("Venue", meta.get("venue", "")),
-               ("Valid Until", valid_until), ("Prepared By", pm_name)]
+    if is_invoice:
+        details = [("Invoice No", quote_ref), ("Date", quote_date),
+                   ("Client", meta.get("client_name", "")), ("Venue", meta.get("venue", "")),
+                   ("Payment Due", meta.get("due_date", "")), ("Prepared By", pm_name)]
+    else:
+        details = [("Quote Ref", quote_ref), ("Date", quote_date),
+                   ("Client", meta.get("client_name", "")), ("Venue", meta.get("venue", "")),
+                   ("Valid Until", valid_until), ("Prepared By", pm_name)]
     details = [(k, v) for k, v in details if str(v).strip()]
 
     rows = (len(details) + 1) // 2
@@ -1083,6 +1096,12 @@ def generate_word_dynamic(items, meta, output_path):
         summary_rows.append(("Discount (AED)", -totals["discount_amount"], False, DISCOUNT_FILL))
     summary_rows.append(("VAT 5% (AED)", totals["vat"], False, SUBTOTAL_FILL))
     summary_rows.append(("Grand Total (AED)", totals["grand_total"], True, COMPANY["accent_hex"]))
+    if is_invoice and float(meta.get("amount_paid") or 0) > 0:
+        # Only shown once something has been paid. On an untouched invoice a "Balance Due"
+        # identical to the grand total is noise, and a zero "Amount Paid" reads as an error.
+        summary_rows.append(("Amount Paid (AED)", float(meta["amount_paid"]), False, SUBTOTAL_FILL))
+        summary_rows.append(("Balance Due (AED)", float(meta.get("balance_due") or 0),
+                             True, COMPANY["accent_hex"]))
 
     spacer = doc.add_paragraph()
     spacer.paragraph_format.space_after = Pt(0)
@@ -1147,7 +1166,7 @@ def generate_word_dynamic(items, meta, output_path):
 
     footer_bits = [COMPANY["name"]]
     if quote_ref:
-        footer_bits.append("Quotation {}".format(quote_ref))
+        footer_bits.append("{} {}".format("Invoice" if is_invoice else "Quotation", quote_ref))
     _build_footer(doc.sections[0], "    |    ".join(footer_bits))
 
     doc.save(str(output_path))

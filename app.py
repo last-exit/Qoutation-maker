@@ -15,6 +15,7 @@ import db
 import parsing
 import doc_generator
 import history_db
+import invoices_db
 import jobs_db
 import image_store
 import image_tools
@@ -1266,6 +1267,44 @@ class QuotationApi:
         except Exception as e:
             return {"success": False, "error": str(e)}
 
+    # --- Install health -----------------------------------------------------------
+
+    def get_install_health(self):
+        """What is missing on this machine, checked up front rather than mid-quotation.
+
+        Each entry names the consequence and the fix, because "LibreOffice not found" on its
+        own tells a PM nothing about why their client did not get a PDF.
+        """
+        try:
+            import embedder
+
+            checks = []
+            if not pdf_export.pdf_available():
+                checks.append({
+                    "id": "pdf", "severity": "warning",
+                    "title": "PDFs cannot be generated on this Mac",
+                    "detail": "Quotations and invoices will open as Word documents instead.",
+                    "fix": "Install LibreOffice: brew install --cask libreoffice",
+                })
+            if not embedder.onnx_available():
+                checks.append({
+                    "id": "model", "severity": "info",
+                    "title": "Search model not downloaded yet",
+                    "detail": "About 90 MB, fetched automatically the first time you search.",
+                    "fix": "Run a search once while online.",
+                })
+            state = backup.status()
+            if state["stale"]:
+                checks.append({
+                    "id": "backup", "severity": "warning",
+                    "title": "No recent backup",
+                    "detail": f"Last backup: {state['newest']['created'] if state['newest'] else 'never'}.",
+                    "fix": "Run a backup from Settings.",
+                })
+            return {"success": True, "checks": checks, "healthy": not checks}
+        except Exception as e:
+            return logging_setup.report("Checking install health", e)
+
     # --- Backup ------------------------------------------------------------------
     # Everything the business remembers lives in a few files on one laptop. Local snapshots
     # die with the disk they are on, so this puts an encrypted copy in a synced folder.
@@ -1315,6 +1354,153 @@ class QuotationApi:
                     "message": "Restored. Close and reopen the app so it reloads the data."}
         except Exception as e:
             return logging_setup.report("Restoring that backup", e)
+
+    # --- Invoices -----------------------------------------------------------------
+    # Marking a quotation "Paid" with one amount could not express the company's own terms
+    # (50% on confirmation, 50% before handover), say what is outstanding across all clients,
+    # or produce a VAT figure. An invoice is its own record with a payment ledger against it.
+
+    def get_invoices(self, status=None, limit=300):
+        try:
+            return {"success": True, "invoices": invoices_db.get_invoices(status, limit)}
+        except Exception as e:
+            return logging_setup.report("Loading invoices", e)
+
+    def get_invoice(self, invoice_id):
+        try:
+            invoice = invoices_db.get_invoice(invoice_id)
+            if not invoice:
+                return {"success": False, "error": "Invoice not found."}
+            return {"success": True, "invoice": invoice}
+        except Exception as e:
+            return logging_setup.report("Loading that invoice", e)
+
+    def create_invoice_from_quotation(self, history_id, payment_terms_days=30):
+        """Raises an invoice for a quotation, copying its lines and totals.
+
+        Figures are copied rather than recomputed: the invoice must say what the client
+        agreed to, not what the same items would price at today.
+        """
+        try:
+            quote = history_db.get_quotation_by_id(history_id)
+            if not quote:
+                return {"success": False, "error": "Quotation not found."}
+
+            existing = invoices_db.get_invoice_for_quotation(history_id)
+            if existing:
+                return {"success": False,
+                        "error": f"Already invoiced as {existing['invoice_number']}.",
+                        "invoice_id": existing["id"]}
+
+            job = jobs_db.get_job_for_quotation(history_id)
+            invoice_id = invoices_db.create_invoice(
+                client_name=quote.get("client_name", ""),
+                items=quote.get("items") or [],
+                subtotal=quote.get("subtotal", 0),
+                vat=quote.get("vat", 0),
+                grand_total=quote.get("grand_total", 0),
+                quotation_id=history_id,
+                job_id=job["id"] if job else None,
+                client_phone=quote.get("client_phone", ""),
+                venue=quote.get("venue", ""),
+                payment_terms_days=payment_terms_days,
+            )
+            log.info("Raised invoice for quotation %s", history_id)
+            return {"success": True, "invoice_id": invoice_id}
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            return logging_setup.report("Raising the invoice", e)
+
+    def update_invoice(self, invoice_id, **fields):
+        try:
+            invoices_db.update_invoice(invoice_id, **fields)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Updating the invoice", e)
+
+    def delete_invoice(self, invoice_id):
+        try:
+            invoices_db.delete_invoice(invoice_id)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Deleting the invoice", e)
+
+    def add_invoice_payment(self, invoice_id, amount, paid_date=None,
+                            method="Bank Transfer", reference="", notes=""):
+        try:
+            payment_id = invoices_db.add_payment(
+                invoice_id, amount, paid_date=paid_date, method=method,
+                reference=reference, notes=notes,
+            )
+            return {"success": True, "payment_id": payment_id}
+        except ValueError as e:
+            return {"success": False, "error": str(e)}
+        except Exception as e:
+            return logging_setup.report("Recording the payment", e)
+
+    def delete_invoice_payment(self, payment_id):
+        try:
+            invoices_db.delete_payment(payment_id)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Removing the payment", e)
+
+    def generate_invoice_document(self, invoice_id, formats=None):
+        """Writes the invoice as a document the client can be sent."""
+        try:
+            invoice = invoices_db.get_invoice(invoice_id)
+            if not invoice:
+                return {"success": False, "error": "Invoice not found."}
+
+            safe_client = re.sub(r'[\\/*?:"<>|]', "", invoice["client_name"]) or "Client"
+            base = f"{safe_client}_Invoice_{invoice['invoice_number']}"
+            out_dir = Path(self.sync_path)
+            out_dir.mkdir(parents=True, exist_ok=True)
+
+            meta = {
+                "doc_kind": "INVOICE",
+                "client_name": invoice["client_name"],
+                "venue": invoice.get("venue", ""),
+                "quote_date": invoice["issue_date"],
+                "quote_ref": invoice["invoice_number"],
+                "due_date": invoice.get("due_date", ""),
+                "amount_paid": invoice["amount_paid"],
+                "balance_due": invoice["balance"],
+            }
+
+            docx_path = out_dir / f"{base}.docx"
+            doc_generator.generate_word_dynamic(invoice["items"], meta, docx_path)
+
+            pdf_result = pdf_export.convert_to_pdf(str(docx_path))
+            pdf_path = pdf_result.get("pdf_path") if pdf_result.get("success") else None
+            invoices_db.update_invoice(
+                invoice_id, docx_path=str(docx_path), pdf_path=pdf_path or "",
+            )
+            pdf_export.open_file(pdf_path or str(docx_path))
+            return {"success": True, "docx_path": str(docx_path), "pdf_path": pdf_path or ""}
+        except Exception as e:
+            return logging_setup.report("Generating the invoice document", e)
+
+    def get_client_statement(self, client_name):
+        try:
+            return {"success": True, "statement": invoices_db.client_statement(client_name)}
+        except Exception as e:
+            return logging_setup.report("Building the client statement", e)
+
+    def get_aging_report(self):
+        try:
+            return {"success": True, "aging": invoices_db.aging_report()}
+        except Exception as e:
+            return logging_setup.report("Building the aging report", e)
+
+    def get_vat_summary(self, start_date, end_date):
+        """Output VAT for a period — the sales side of a UAE FTA VAT return."""
+        try:
+            return {"success": True,
+                    "summary": invoices_db.vat_summary(start_date, end_date)}
+        except Exception as e:
+            return logging_setup.report("Building the VAT summary", e)
 
     # --- Jobs --------------------------------------------------------------------
     # What happens after a quote is won. Until this existed the app could say a quote was Won

@@ -114,6 +114,50 @@ class SentenceTransformerEmbedder:
         )
 
 
+# The exported model is ~90 MB, which is too large to keep in git and is derived rather than
+# source. It is fetched once on first use instead. Without this a fresh clone has no model,
+# no torch (deliberately dropped from the runtime), and therefore no search at all — which is
+# exactly what a new install used to hit.
+MODEL_URLS = {
+    "model.onnx": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/onnx/model.onnx",
+    "tokenizer.json": "https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2/resolve/main/tokenizer.json",
+}
+# Guards against a truncated download being cached and then failing confusingly at load time.
+MIN_MODEL_BYTES = 80_000_000
+
+
+def download_model(progress=None):
+    """Fetches the ONNX model and tokenizer. Returns True once both are in place."""
+    import urllib.request
+
+    ONNX_DIR.mkdir(parents=True, exist_ok=True)
+    for name, url in MODEL_URLS.items():
+        destination = ONNX_DIR / name
+        if destination.exists() and destination.stat().st_size > 1000:
+            continue
+        log.info("Downloading %s (first run only)", name)
+        if progress:
+            progress(f"Downloading the search model ({name})...")
+        # Written to a temp name and renamed, so an interrupted download cannot leave a
+        # half-file sitting where a complete one is expected.
+        temp = destination.with_suffix(destination.suffix + ".part")
+        try:
+            urllib.request.urlretrieve(url, temp)
+            temp.replace(destination)
+        except Exception:
+            temp.unlink(missing_ok=True)
+            raise
+
+    model_size = ONNX_MODEL.stat().st_size if ONNX_MODEL.exists() else 0
+    if model_size < MIN_MODEL_BYTES:
+        ONNX_MODEL.unlink(missing_ok=True)
+        raise RuntimeError(
+            f"The downloaded model looks truncated ({model_size} bytes). "
+            f"Check the connection and try again."
+        )
+    return True
+
+
 def onnx_available():
     return ONNX_MODEL.exists() and TOKENIZER_JSON.exists()
 
@@ -128,13 +172,16 @@ def get_embedder(force_backend=None):
     if _instance is not None and force_backend in (None, _instance.backend):
         return _instance
 
-    backend = force_backend or os.environ.get("QE_EMBEDDER") or ("onnx" if onnx_available() else "st")
+    # ONNX unconditionally: it provisions itself by downloading the model when missing, so
+    # falling back to sentence-transformers here would mean a fresh install silently picks a
+    # backend whose dependency is not installed — and the download would never fire.
+    backend = force_backend or os.environ.get("QE_EMBEDDER") or "onnx"
 
     if backend == "onnx":
         if not onnx_available():
-            raise RuntimeError(
-                f"ONNX model not found at {ONNX_MODEL}. Run: python tools/export_onnx.py"
-            )
+            # First run on a fresh install. Fetch rather than fail: the alternative is an
+            # app that installs cleanly and then cannot search.
+            download_model()
         log.info("Loading embedding model (%s, onnxruntime)", MODEL_NAME)
         _instance = OnnxEmbedder()
     else:
