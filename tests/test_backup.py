@@ -201,3 +201,23 @@ def test_status_after_a_backup(workspace):
 
 def test_default_destination_is_a_synced_folder_when_one_exists(workspace):
     assert "RedCubeBackups" in backup.default_destination()
+
+
+def test_google_drive_is_preferred_over_other_providers(tmp_path, monkeypatch):
+    """The quotation archive already lives in Drive, so one account covers both."""
+    monkeypatch.setattr(backup.Path, "home", staticmethod(lambda: tmp_path))
+    (tmp_path / "Library/CloudStorage/GoogleDrive-me@example.com/My Drive").mkdir(parents=True)
+    (tmp_path / "Library/Mobile Documents/com~apple~CloudDocs").mkdir(parents=True)
+    (tmp_path / "Dropbox").mkdir()
+
+    found = backup.find_cloud_folders()
+    assert found[0]["provider"] == "Google Drive"
+    assert "My Drive" in found[0]["path"]
+    assert {f["provider"] for f in found} == {"Google Drive", "Dropbox", "iCloud Drive"}
+
+
+def test_falls_back_to_a_local_folder_with_no_cloud_provider(tmp_path, monkeypatch):
+    monkeypatch.setattr(backup.Path, "home", staticmethod(lambda: tmp_path))
+    monkeypatch.setattr(backup, "ROOT", tmp_path / "app")
+    assert backup.find_cloud_folders() == []
+    assert "offsite" in backup.default_destination()

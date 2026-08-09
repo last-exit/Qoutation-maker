@@ -92,14 +92,45 @@ def ensure_passphrase():
 
 # --- Configuration ----------------------------------------------------------------------
 
-def default_destination():
-    """iCloud Drive if present, else a folder beside the app."""
-    icloud = Path.home() / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
-    if icloud.is_dir():
-        return str(icloud / "RedCubeBackups")
-    dropbox = Path.home() / "Dropbox"
+def find_cloud_folders():
+    """Every synced folder on this machine that could hold backups, best first.
+
+    Google Drive is preferred because the business already keeps its quotation archive there,
+    so one account covers both and there is one less thing to remember to check.
+
+    Drive for Desktop mounts per-account under ~/Library/CloudStorage/GoogleDrive-<email>/,
+    which is why this globs rather than testing a fixed path.
+    """
+    home = Path.home()
+    candidates = []
+
+    for mount in sorted((home / "Library" / "CloudStorage").glob("GoogleDrive-*")):
+        my_drive = mount / "My Drive"
+        candidates.append(("Google Drive", my_drive if my_drive.is_dir() else mount))
+
+    # Where the older standalone Drive client put things.
+    legacy = home / "Google Drive"
+    if legacy.is_dir():
+        candidates.append(("Google Drive", legacy))
+
+    dropbox = home / "Dropbox"
     if dropbox.is_dir():
-        return str(dropbox / "RedCubeBackups")
+        candidates.append(("Dropbox", dropbox))
+
+    icloud = home / "Library" / "Mobile Documents" / "com~apple~CloudDocs"
+    if icloud.is_dir():
+        candidates.append(("iCloud Drive", icloud))
+
+    return [{"provider": name, "path": str(path / "RedCubeBackups")}
+            for name, path in candidates if path.is_dir()]
+
+
+def default_destination():
+    """The best synced folder available, or a local one if none is."""
+    found = find_cloud_folders()
+    if found:
+        return found[0]["path"]
+    # Better than nothing, and honest about being on the same disk as the original.
     return str(ROOT / "backups" / "offsite")
 
 
