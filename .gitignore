@@ -27,6 +27,11 @@ catalog.db-shm
 jobs.db
 jobs.db-wal
 jobs.db-shm
+# Backup passphrase and destination. The passphrase must never enter version control —
+# it is the only thing standing between the cloud copy and anyone who reaches the folder.
+.backup_key
+backup_config.json
+
 
 # Product photos extracted from client quotations, content-addressed by image_store.
 # Regenerable by re-syncing, and they are client material either way.
@@ -60,14 +65,6 @@ graphify-out/.graphify_python
 graphify-out/.graphify_root
 graphify-out/20*/
 graphify-out/wiki/
-
-# --- Odoo deployment ----------------------------------------------------------
-# Real credentials and the generated config that embeds the master password.
-# The .example files next to them are tracked.
-odoo/.env
-odoo/config/odoo.conf
-# Filestore/attachment dumps taken for local restores.
-odoo/backups/
 
 # --- Credentials --------------------------------------------------------------
 # Only credentials.json.template is tracked; the real file never is.

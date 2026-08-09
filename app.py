@@ -10,6 +10,7 @@ import numpy as np
 import chromadb
 import webview
 
+import backup
 import db
 import parsing
 import doc_generator
@@ -1264,6 +1265,56 @@ class QuotationApi:
             return {"success": True, "summary": history_db.get_margin_summary(period_days)}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # --- Backup ------------------------------------------------------------------
+    # Everything the business remembers lives in a few files on one laptop. Local snapshots
+    # die with the disk they are on, so this puts an encrypted copy in a synced folder.
+
+    def get_backup_status(self):
+        try:
+            return {"success": True, "status": backup.status()}
+        except Exception as e:
+            return logging_setup.report("Reading backup status", e)
+
+    def run_backup(self):
+        """Writes a backup and verifies it by restoring into a temp directory.
+
+        `passphrase` comes back non-null only the first time. The UI must show it and tell
+        the user to save it elsewhere — a passphrase held only on this machine is worthless
+        in the situation the backup exists for.
+        """
+        try:
+            result = backup.create()
+            if not result["verified"]:
+                return {"success": False,
+                        "error": "Backup was written but could not be read back. "
+                                 "Do not rely on it. See logs for details.",
+                        "result": result}
+            return {"success": True, "result": result}
+        except Exception as e:
+            return logging_setup.report("Running the backup", e)
+
+    def list_backups(self):
+        try:
+            return {"success": True, "backups": backup.list_backups()}
+        except Exception as e:
+            return logging_setup.report("Listing backups", e)
+
+    def set_backup_destination(self, destination):
+        try:
+            return {"success": True, "config": backup.save_config(destination=destination)}
+        except Exception as e:
+            return logging_setup.report("Saving the backup destination", e)
+
+    def restore_backup(self, archive_path):
+        """Replaces live data with a backup. Takes a safety copy of what it overwrites first."""
+        try:
+            outcome = backup.restore(archive_path)
+            log.warning("Data restored from %s", archive_path)
+            return {"success": True, "outcome": outcome,
+                    "message": "Restored. Close and reopen the app so it reloads the data."}
+        except Exception as e:
+            return logging_setup.report("Restoring that backup", e)
 
     # --- Jobs --------------------------------------------------------------------
     # What happens after a quote is won. Until this existed the app could say a quote was Won
