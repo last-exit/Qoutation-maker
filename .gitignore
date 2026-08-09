@@ -24,6 +24,9 @@ corrections_backup_*.db
 catalog.db
 catalog.db-wal
 catalog.db-shm
+jobs.db
+jobs.db-wal
+jobs.db-shm
 
 # Product photos extracted from client quotations, content-addressed by image_store.
 # Regenerable by re-syncing, and they are client material either way.

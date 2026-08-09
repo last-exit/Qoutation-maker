@@ -453,7 +453,7 @@ function initCompilerVSplit() {
   }
 }
 
-const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', catalog: 'Item Catalog', review: 'Needs Review', history: 'Quotation History' };
+const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', catalog: 'Item Catalog', jobs: 'Jobs', review: 'Needs Review', history: 'Quotation History' };
 // Home has its own hero; Review/History already carry a panel title. Only Compiler
 // gets the shared page-head, since it's the one view that never had a headline.
 const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
@@ -462,6 +462,7 @@ function switchTab(tab) {
   document.getElementById('view-home').classList.toggle('hidden', tab !== 'home');
   document.getElementById('view-compiler').classList.toggle('hidden', tab !== 'compiler');
   document.getElementById('view-catalog').classList.toggle('hidden', tab !== 'catalog');
+  document.getElementById('view-jobs').classList.toggle('hidden', tab !== 'jobs');
   document.getElementById('view-history').classList.toggle('hidden', tab !== 'history');
   document.getElementById('view-review').classList.toggle('hidden', tab !== 'review');
 
@@ -484,6 +485,7 @@ function switchTab(tab) {
 
   if (tab === 'home') loadHomeDashboard();
   if (tab === 'catalog') loadCatalog();
+  if (tab === 'jobs') loadJobs();
   if (tab === 'history') loadHistory();
   if (tab === 'review') loadReviewQueue();
 }
@@ -1745,5 +1747,304 @@ function dismissReviewGroup(fileName) {
     updateAnalyticsDashboard();
     if (failed > 0) showToast(`${failed} item(s) could not be dismissed.`, 'warning');
     else showToast(`Dismissed all flagged items from ${fileName}.`, 'success');
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Jobs — what happens after a quote is won
+// ---------------------------------------------------------------------------
+// A quotation says what a job should earn. Everything below is about what it
+// actually cost, so margin stops being an estimate multiplied by a guess.
+
+let jobsCache = [];
+let jobStatusFilter = '';
+const JOB_STATUSES = ['Planned', 'In Progress', 'Complete', 'Cancelled'];
+const COST_CATEGORIES = ['Material', 'Labour', 'Transport', 'Subcontract', 'Other'];
+
+function setJobFilter(status) {
+  jobStatusFilter = status;
+  document.querySelectorAll('#jobs-filter-row .status-filter-chip').forEach(function (chip) {
+    chip.classList.toggle('active', chip.getAttribute('data-status') === status);
+  });
+  renderJobs();
+}
+
+function loadJobs() {
+  if (!api()) return;
+  const list = document.getElementById('jobs-list');
+  list.innerHTML = skeletonCards(3);
+
+  api().get_jobs().then(function (res) {
+    if (!res.success) { list.innerHTML = bannerError(res.error); return; }
+    jobsCache = res.jobs || [];
+    renderJobs();
+    updateJobsTabCount();
+  }).catch(function (err) { list.innerHTML = bannerError(err); });
+
+  api().get_job_margin_report(90).then(function (res) {
+    if (res.success) renderJobsSummary(res.report);
+  });
+}
+
+function updateJobsTabCount() {
+  const badge = document.getElementById('jobs-tab-count');
+  if (!badge) return;
+  const active = jobsCache.filter(j => j.status === 'In Progress' || j.status === 'Planned').length;
+  badge.innerText = active;
+  badge.classList.toggle('hidden', active === 0);
+}
+
+function renderJobsSummary(r) {
+  const el = document.getElementById('jobs-summary');
+  if (!el) return;
+  // How much of the period the margin actually covers is stated next to it. A margin
+  // computed from two of twenty jobs is not a business figure, and presenting it
+  // without that context is how the old catalog-based margin misled.
+  const coverage = r.jobs_without_costs
+    ? `<div class="stat-note">${r.jobs_costed} of ${r.jobs_total} jobs have costs recorded</div>`
+    : `<div class="stat-note">all ${r.jobs_total} jobs costed</div>`;
+  el.innerHTML = `
+    <div class="stat-card"><div class="stat-label">Quoted (90 days)</div>
+      <div class="stat-value">${money(r.quoted_total)}</div></div>
+    <div class="stat-card"><div class="stat-label">Actual Cost</div>
+      <div class="stat-value">${money(r.actual_cost)}</div></div>
+    <div class="stat-card"><div class="stat-label">Margin</div>
+      <div class="stat-value ${r.margin < 0 ? 'stat-danger' : ''}">${money(r.margin)}</div>
+      <div class="stat-note">${r.margin_pct}%</div></div>
+    <div class="stat-card"><div class="stat-label">Coverage</div>
+      <div class="stat-value">${r.jobs_costed}/${r.jobs_total}</div>${coverage}</div>`;
+}
+
+function renderJobs() {
+  const list = document.getElementById('jobs-list');
+  const rows = jobStatusFilter ? jobsCache.filter(j => j.status === jobStatusFilter) : jobsCache;
+
+  if (rows.length === 0) {
+    list.innerHTML = `<div class="empty-state">${icon('pin', 'icon-lg')}
+      <p>No jobs here yet.</p>
+      <p style="margin-top:4px;">Mark a quotation Won in Invoices to open a job for it, or add one directly.</p></div>`;
+    return;
+  }
+
+  list.innerHTML = rows.map(function (j, idx) {
+    const pill = j.status === 'Complete' ? 'status-pill-won'
+      : (j.status === 'Cancelled' ? 'status-pill-lost' : 'status-pill-sent');
+    // Only claim a margin when costs exist. Otherwise say so plainly — a job with
+    // nothing booked would read as 100% margin, which is worse than saying nothing.
+    const marginCell = j.has_costs
+      ? `<div class="job-margin ${j.margin < 0 ? 'stat-danger' : ''}">${money(j.margin)} <span class="job-margin-pct">${j.margin_pct}%</span></div>`
+      : `<div class="job-margin job-margin-unknown">no costs recorded</div>`;
+    return `
+      <div class="job-card anim-in" style="animation-delay:${Math.min(idx * 35, 300)}ms;">
+        <div class="job-card-head">
+          <div style="min-width:0;">
+            <div class="job-title">${esc(j.title || 'Untitled job')}</div>
+            <div class="job-meta">
+              <span class="chip chip-muted">${j.job_number}</span>
+              <span>${esc(j.client_name || '-')}</span>
+              ${j.venue ? `<span>${icon('pin', 'icon-sm')} ${esc(j.venue)}</span>` : ''}
+              ${j.start_date ? `<span>${esc(j.start_date)}</span>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-shrink:0;">
+            <select class="input input-sm ${pill}" onchange="changeJobStatus(${j.id}, this.value)">
+              ${JOB_STATUSES.map(st => `<option value="${st}" ${st === j.status ? 'selected' : ''}>${st}</option>`).join('')}
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="openJob(${j.id})">${icon('edit', 'icon-sm')} Costs</button>
+            <button class="btn btn-danger-ghost btn-sm" onclick="removeJob(${j.id})">${icon('trash', 'icon-sm')}</button>
+          </div>
+        </div>
+        <div class="job-figures">
+          <div><span class="job-fig-label">Quoted</span><span class="job-fig">${money(j.quoted_total)}</span></div>
+          <div><span class="job-fig-label">Actual</span><span class="job-fig">${money(j.actual_cost)}</span></div>
+          <div><span class="job-fig-label">Margin</span>${marginCell}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function changeJobStatus(jobId, status) {
+  api().update_job(jobId, { status: status }).then(function (res) {
+    if (!res.success) { showToast(res.error, 'error'); return; }
+    loadJobs();
+  });
+}
+
+function removeJob(jobId) {
+  const job = jobsCache.find(j => j.id === jobId);
+  confirmAction(
+    'Delete this job?',
+    `${job ? job.job_number + ' — ' : ''}its recorded costs go with it. The quotation is not affected.`,
+    function () {
+      api().delete_job(jobId).then(function () { loadJobs(); });
+    });
+}
+
+function bannerError(message) {
+  return `<div class="banner banner-error">${icon('alert', 'icon')}<span>${esc(message)}</span></div>`;
+}
+
+// --- Job editor -------------------------------------------------------------
+
+let editingJobId = null;
+
+function openNewJob() {
+  editingJobId = null;
+  fillJobForm({});
+  document.getElementById('job-modal-title').innerText = 'New Job';
+  openModal(document.getElementById('job-modal-overlay'));
+}
+
+function editJob(jobId) {
+  editingJobId = jobId;
+  fillJobForm(jobsCache.find(j => j.id === jobId) || {});
+  document.getElementById('job-modal-title').innerText = 'Edit Job';
+  openModal(document.getElementById('job-modal-overlay'));
+}
+
+function fillJobForm(job) {
+  document.getElementById('job-title-input').value = job.title || '';
+  document.getElementById('job-client-input').value = job.client_name || '';
+  document.getElementById('job-venue-input').value = job.venue || '';
+  document.getElementById('job-quoted-input').value = job.quoted_total || 0;
+  document.getElementById('job-start-input').value = job.start_date || '';
+  document.getElementById('job-end-input').value = job.end_date || '';
+  document.getElementById('job-contact-input').value = job.site_contact || '';
+  document.getElementById('job-notes-input').value = job.notes || '';
+}
+
+function saveJob() {
+  const payload = {
+    title: document.getElementById('job-title-input').value.trim(),
+    client_name: document.getElementById('job-client-input').value.trim(),
+    venue: document.getElementById('job-venue-input').value.trim(),
+    quoted_total: parseFloat(document.getElementById('job-quoted-input').value) || 0,
+    start_date: document.getElementById('job-start-input').value,
+    end_date: document.getElementById('job-end-input').value,
+    site_contact: document.getElementById('job-contact-input').value.trim(),
+    notes: document.getElementById('job-notes-input').value.trim(),
+  };
+  if (!payload.title) { showToast('Give the job a name.', 'error'); return; }
+
+  const done = function (res) {
+    if (res && res.success === false) { showToast(res.error, 'error'); return; }
+    closeModal(document.getElementById('job-modal-overlay'));
+    loadJobs();
+  };
+  if (editingJobId) api().update_job(editingJobId, payload).then(done);
+  else api().create_job(payload).then(done);
+}
+
+function removeJob(jobId) {
+  const job = jobsCache.find(j => j.id === jobId);
+  if (!confirm(`Delete ${job ? job.job_number : 'this job'}?\n\nIts recorded costs go with it. The quotation is not affected.`)) return;
+  api().delete_job(jobId).then(function (res) {
+    if (res.success === false) { showToast(res.error, 'error'); return; }
+    loadJobs();
+  });
+}
+
+// --- Costs ------------------------------------------------------------------
+
+let openJobId = null;
+
+function openJob(jobId) {
+  openJobId = jobId;
+  api().get_job(jobId).then(function (res) {
+    if (!res.success) { showToast(res.error, 'error'); return; }
+    renderJobCosts(res.job);
+    openModal(document.getElementById('job-costs-modal-overlay'));
+  });
+}
+
+function renderJobCosts(job) {
+  document.getElementById('job-costs-title').innerText = `${job.job_number} — ${job.title || ''}`;
+
+  const breakdown = (job.cost_by_category || []).map(function (c) {
+    return `<span class="chip chip-muted">${esc(c.category)} ${money(c.total)}</span>`;
+  }).join('');
+  document.getElementById('job-costs-summary').innerHTML = `
+    <div class="job-figures">
+      <div><span class="job-fig-label">Quoted</span><span class="job-fig">${money(job.quoted_total)}</span></div>
+      <div><span class="job-fig-label">Actual</span><span class="job-fig">${money(job.actual_cost)}</span></div>
+      <div><span class="job-fig-label">Margin</span>
+        <span class="job-fig ${job.margin < 0 ? 'stat-danger' : ''}">${money(job.margin)} (${job.margin_pct}%)</span></div>
+    </div>
+    <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap;">${breakdown}</div>`;
+
+  const body = document.getElementById('job-costs-body');
+  if (!job.costs.length) {
+    body.innerHTML = `<tr><td colspan="7"><div class="empty-state" style="padding:16px;">
+      ${icon('sheet', 'icon-lg')}<p>Nothing booked against this job yet.</p>
+      <p style="margin-top:4px;">Until something is, its margin is the quoted one — not a measured one.</p>
+      </div></td></tr>`;
+    return;
+  }
+  body.innerHTML = job.costs.map(function (c) {
+    return `<tr>
+      <td>${esc(c.cost_date || '')}</td>
+      <td><span class="chip chip-muted">${esc(c.category)}</span></td>
+      <td>${esc(c.description)}</td>
+      <td>${esc(c.supplier_name || '-')}</td>
+      <td class="num">${c.quantity || ''}</td>
+      <td class="num num-strong">${money(c.amount)}</td>
+      <td><button class="btn btn-danger-ghost btn-sm" onclick="removeJobCost(${c.id})">${icon('trash', 'icon-sm')}</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function addJobCost() {
+  const description = document.getElementById('cost-desc-input').value.trim();
+  if (!description) { showToast('What was the cost for?', 'error'); return; }
+  const amountRaw = document.getElementById('cost-amount-input').value;
+  api().add_job_cost(
+    openJobId, description,
+    document.getElementById('cost-category-input').value,
+    document.getElementById('cost-supplier-input').value.trim() || null,
+    parseFloat(document.getElementById('cost-qty-input').value) || 1,
+    parseFloat(document.getElementById('cost-unit-input').value) || 0,
+    amountRaw === '' ? null : parseFloat(amountRaw),
+    document.getElementById('cost-date-input').value || null,
+    document.getElementById('cost-ref-input').value.trim()
+  ).then(function (res) {
+    if (!res.success) { showToast(res.error, 'error'); return; }
+    ['cost-desc-input', 'cost-supplier-input', 'cost-amount-input', 'cost-ref-input'].forEach(function (id) {
+      document.getElementById(id).value = '';
+    });
+    openJob(openJobId);
+    loadJobs();
+  });
+}
+
+function removeJobCost(costId) {
+  api().delete_job_cost(costId).then(function () {
+    openJob(openJobId);
+    loadJobs();
+  });
+}
+
+// --- Suppliers --------------------------------------------------------------
+
+function openSuppliers() {
+  api().get_suppliers().then(function (res) {
+    if (!res.success) { showToast(res.error, 'error'); return; }
+    const body = document.getElementById('suppliers-body');
+    if (!res.suppliers.length) {
+      body.innerHTML = `<tr><td colspan="5"><div class="empty-state" style="padding:16px;">
+        ${icon('database', 'icon-lg')}<p>No suppliers yet.</p>
+        <p style="margin-top:4px;">They are created automatically when you name one on a job cost.</p>
+        </div></td></tr>`;
+    } else {
+      body.innerHTML = res.suppliers.map(function (sup) {
+        return `<tr>
+          <td>${esc(sup.name)}</td>
+          <td>${esc(sup.phone || '-')}</td>
+          <td>${esc(sup.email || '-')}</td>
+          <td class="num">${sup.cost_entries}</td>
+          <td class="num num-strong">${money(sup.total_spend)}</td>
+        </tr>`;
+      }).join('');
+    }
+    openModal(document.getElementById('suppliers-modal-overlay'));
   });
 }

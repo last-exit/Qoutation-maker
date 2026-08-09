@@ -14,6 +14,7 @@ import db
 import parsing
 import doc_generator
 import history_db
+import jobs_db
 import image_store
 import image_tools
 import logging_setup
@@ -1263,6 +1264,158 @@ class QuotationApi:
             return {"success": True, "summary": history_db.get_margin_summary(period_days)}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    # --- Jobs --------------------------------------------------------------------
+    # What happens after a quote is won. Until this existed the app could say a quote was Won
+    # and how much had been paid, but nothing about what the work cost — so every margin it
+    # reported was a quoted estimate, not a measured one.
+
+    def get_jobs(self, status=None, limit=300):
+        try:
+            return {"success": True, "jobs": jobs_db.get_jobs(status=status, limit=limit)}
+        except Exception as e:
+            return logging_setup.report("Loading jobs", e)
+
+    def get_job(self, job_id):
+        try:
+            job = jobs_db.get_job(job_id)
+            if not job:
+                return {"success": False, "error": "Job not found."}
+            return {"success": True, "job": job}
+        except Exception as e:
+            return logging_setup.report("Loading that job", e)
+
+    def create_job_from_quotation(self, history_id):
+        """Turns a won quotation into a job.
+
+        The quoted total is copied onto the job rather than read live, so later edits to the
+        quotation cannot silently move the number the job's margin is measured against.
+        """
+        try:
+            quote = history_db.get_quotation_by_id(history_id)
+            if not quote:
+                return {"success": False, "error": "Quotation not found."}
+
+            existing = jobs_db.get_job_for_quotation(history_id)
+            if existing:
+                return {"success": True, "job_id": existing["id"], "existing": True}
+
+            items = quote.get("items") or []
+            title = (items[0].get("description", "").splitlines()[0][:80]
+                     if items and isinstance(items[0], dict) else "")
+            job_id = jobs_db.create_job(
+                quotation_id=history_id,
+                client_name=quote.get("client_name", ""),
+                venue=quote.get("venue", ""),
+                title=title or f"Job for {quote.get('client_name', 'client')}",
+                quoted_total=quote.get("grand_total", 0),
+            )
+            log.info("Opened job for quotation %s (%s)", history_id, quote.get("quote_number"))
+            return {"success": True, "job_id": job_id, "existing": False}
+        except Exception as e:
+            return logging_setup.report("Opening a job for this quotation", e)
+
+    def create_job(self, job):
+        """Opens a job directly, for work that never went through a quotation."""
+        try:
+            title = (job.get("title") or "").strip()
+            if not title:
+                return {"success": False, "error": "Give the job a name."}
+            job_id = jobs_db.create_job(
+                client_name=job.get("client_name", ""), venue=job.get("venue", ""),
+                title=title, quoted_total=job.get("quoted_total", 0),
+                start_date=job.get("start_date"), end_date=job.get("end_date"),
+                site_contact=job.get("site_contact", ""), notes=job.get("notes", ""),
+            )
+            return {"success": True, "job_id": job_id}
+        except Exception as e:
+            return logging_setup.report("Creating the job", e)
+
+    def update_job(self, job_id, **fields):
+        try:
+            jobs_db.update_job(job_id, **fields)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Updating the job", e)
+
+    def delete_job(self, job_id):
+        try:
+            jobs_db.delete_job(job_id)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Deleting the job", e)
+
+    # --- Job costs ---------------------------------------------------------------
+
+    def add_job_cost(self, job_id, description, category="Material", supplier_name=None,
+                     quantity=1, unit_cost=0, amount=None, cost_date=None, invoice_ref=""):
+        try:
+            cost_id = jobs_db.add_job_cost(
+                job_id, description, category=category, supplier_name=supplier_name,
+                quantity=quantity, unit_cost=unit_cost, amount=amount,
+                cost_date=cost_date, invoice_ref=invoice_ref,
+            )
+            return {"success": True, "cost_id": cost_id}
+        except Exception as e:
+            return logging_setup.report("Adding that cost", e)
+
+    def update_job_cost(self, cost_id, **fields):
+        try:
+            jobs_db.update_job_cost(cost_id, **fields)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Updating the cost", e)
+
+    def delete_job_cost(self, cost_id):
+        try:
+            jobs_db.delete_job_cost(cost_id)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Deleting the cost", e)
+
+    def get_cost_categories(self):
+        return {"success": True, "categories": jobs_db.COST_CATEGORIES,
+                "statuses": jobs_db.JOB_STATUSES}
+
+    # --- Suppliers ---------------------------------------------------------------
+
+    def get_suppliers(self):
+        try:
+            return {"success": True, "suppliers": jobs_db.get_suppliers()}
+        except Exception as e:
+            return logging_setup.report("Loading suppliers", e)
+
+    def save_supplier(self, supplier):
+        try:
+            supplier_id = jobs_db.save_supplier(
+                supplier_id=supplier.get("id"), name=supplier.get("name"),
+                phone=supplier.get("phone"), email=supplier.get("email"),
+                notes=supplier.get("notes"),
+            )
+            return {"success": True, "id": supplier_id}
+        except Exception as e:
+            return logging_setup.report("Saving the supplier", e)
+
+    def delete_supplier(self, supplier_id):
+        try:
+            jobs_db.delete_supplier(supplier_id)
+            return {"success": True}
+        except Exception as e:
+            return logging_setup.report("Deleting the supplier", e)
+
+    # --- Job reporting -----------------------------------------------------------
+
+    def get_job_margin_report(self, period_days=90):
+        try:
+            return {"success": True, "report": jobs_db.margin_report(period_days)}
+        except Exception as e:
+            return logging_setup.report("Building the margin report", e)
+
+    def get_upcoming_jobs(self, days=30):
+        try:
+            return {"success": True, "jobs": jobs_db.upcoming_jobs(days)}
+        except Exception as e:
+            return logging_setup.report("Loading the schedule", e)
 
     # --- Item Catalog --------------------------------------------------------------
 

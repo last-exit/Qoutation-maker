@@ -655,3 +655,55 @@ table.history-table tbody tr { animation: fadeSlideUp .3s var(--ease-out) both; 
   outline: none;
   box-shadow: var(--ring);
 }
+
+/* ---------- Jobs ---------- */
+/* Reuses the existing panel/border/shadow tokens so the tab reads as part of the app
+   rather than a bolt-on. Nothing here introduces a new colour. */
+
+.view-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 4px 0 16px; }
+.view-title { font-family: var(--font-display); font-size: 20px; margin: 0; color: var(--text-primary); }
+.view-sub { font-size: 12px; color: var(--text-muted); margin: 3px 0 0; }
+
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.stat-note { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.stat-danger { color: var(--danger); }
+
+.filter-row { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+
+.job-card {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 14px 16px; margin-bottom: 10px; box-shadow: var(--shadow-card);
+  transition: transform .2s var(--ease-out), border-color .2s var(--ease-out);
+}
+.job-card:hover { transform: translateY(-1px); border-color: var(--border-strong); }
+.job-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.job-title { font-weight: 600; font-size: 14px; color: var(--text-primary); }
+.job-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+.job-figures { display: flex; gap: 28px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--border); }
+.job-fig-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 2px; }
+.job-fig { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.job-margin { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.job-margin-pct { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+/* A job with nothing booked has no measured margin. Saying so in muted text is the point —
+   rendering a number here would read as 100% margin and quietly mislead. */
+.job-margin-unknown { font-size: 11px; font-weight: 500; color: var(--text-muted); font-style: italic; }
+
+/* ---------- Cost entry ---------- */
+.cost-entry-row {
+  display: grid; grid-template-columns: 110px 1.6fr 1.1fr 70px 90px 100px 130px 110px auto;
+  gap: 6px; align-items: center; margin: 14px 0; padding: 10px;
+  background: var(--bg-panel-alt); border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+@media (max-width: 1100px) { .cost-entry-row { grid-template-columns: repeat(3, 1fr); } }
+
+.input-sm { padding: 6px 8px; font-size: 11px; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+
+table.data-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+table.data-table th { position: sticky; top: 0; background: var(--bg-panel-alt); text-align: left; padding: 9px 11px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+table.data-table td { padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+table.data-table tr:hover td { background: var(--bg-hover); }
+
+.modal-wide { max-width: 1080px; width: 94vw; }
