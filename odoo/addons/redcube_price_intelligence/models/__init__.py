@@ -9,3 +9,4 @@ from . import sale_order
 from . import archive_pick_wizard
 from . import legacy_import
 from . import job_costing
+from . import sale_report

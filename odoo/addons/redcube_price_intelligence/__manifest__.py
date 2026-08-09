@@ -44,6 +44,7 @@ What it adds:
         "views/wizard_views.xml",
         "views/sale_order_views.xml",
         "views/job_costing_views.xml",
+        "report/quotation_report.xml",
         "views/menus.xml",
     ],
     "installable": True,

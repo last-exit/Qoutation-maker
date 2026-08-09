@@ -1,0 +1,213 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        The Red Cube quotation. Replaces the stock sale report rather than extending it: the
+        stock layout is a text table, and almost every element here (photo column, name/spec
+        split, banded rows, brand masthead) would be a fight against it.
+    -->
+    <template id="report_quotation_redcube">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-set="brand" t-value="doc._report_brand()"/>
+                <t t-set="lines" t-value="doc._report_lines()"/>
+                <t t-set="show_photos" t-value="doc._report_has_photos()"/>
+                <t t-call="web.external_layout">
+                    <div class="page rc-doc">
+
+                        <style>
+                            .rc-doc { font-family: Arial, Helvetica, sans-serif; color: #222; }
+                            .rc-title { font-size: 22px; font-weight: bold; letter-spacing: .5px; }
+                            .rc-tagline { font-size: 11px; color: #777; margin-top: 2px; }
+                            .rc-meta { font-size: 11px; }
+                            .rc-meta td { padding: 1px 0; }
+                            .rc-meta .rc-label { color: #777; padding-right: 10px; }
+                            table.rc-items { width: 100%; border-collapse: collapse; margin-top: 14px; }
+                            table.rc-items th {
+                                font-size: 10px; text-transform: uppercase; letter-spacing: .6px;
+                                color: #fff; padding: 7px 8px; text-align: left;
+                            }
+                            table.rc-items td { padding: 8px; font-size: 11px; vertical-align: top; }
+                            /* Banded rows, as on the business's own cost sheets — the eye can
+                               separate one line item from the next at a glance. */
+                            table.rc-items tr.rc-band td { background: #F7F5F1; }
+                            .rc-name { font-weight: bold; font-size: 12px; }
+                            .rc-spec { color: #555; font-size: 10px; line-height: 1.35; }
+                            .rc-photo-note { color: #999; font-size: 8.5px; font-style: italic; }
+                            .rc-num { text-align: right; white-space: nowrap; }
+                            .rc-photo { width: 96px; }
+                            .rc-photo img { max-width: 92px; max-height: 92px; }
+                            table.rc-totals { width: 260px; margin-left: auto; margin-top: 10px;
+                                              border-collapse: collapse; font-size: 11px; }
+                            table.rc-totals td { padding: 5px 8px; }
+                            table.rc-totals tr.rc-sub td { background: #EFEDE7; }
+                            table.rc-totals tr.rc-disc td { background: #DCE9F5; }
+                            table.rc-totals tr.rc-grand td {
+                                font-size: 13px; font-weight: bold; color: #fff;
+                            }
+                            .rc-terms { margin-top: 22px; font-size: 10px; color: #444; }
+                            .rc-terms h4 { font-size: 10px; text-transform: uppercase;
+                                           letter-spacing: .6px; margin-bottom: 4px; }
+                            .rc-terms li { margin-bottom: 2px; }
+                        </style>
+
+                        <!-- Masthead -->
+                        <table style="width:100%; border-collapse:collapse;">
+                            <tr>
+                                <td style="vertical-align:middle;">
+                                    <div class="rc-title" t-attf-style="color:{{ brand['primary'] }};">
+                                        QUOTATION
+                                    </div>
+                                    <div class="rc-tagline"><t t-esc="brand['tagline']"/></div>
+                                </td>
+                                <td style="text-align:right; vertical-align:middle;">
+                                    <table class="rc-meta" style="margin-left:auto;">
+                                        <tr>
+                                            <td class="rc-label">Reference</td>
+                                            <td><strong t-field="doc.name"/></td>
+                                        </tr>
+                                        <tr>
+                                            <td class="rc-label">Date</td>
+                                            <td><span t-field="doc.date_order" t-options='{"widget": "date"}'/></td>
+                                        </tr>
+                                        <tr t-if="doc.validity_date">
+                                            <td class="rc-label">Valid Until</td>
+                                            <td><span t-field="doc.validity_date"/></td>
+                                        </tr>
+                                        <tr t-if="doc.user_id">
+                                            <td class="rc-label">Prepared By</td>
+                                            <td><span t-field="doc.user_id.name"/></td>
+                                        </tr>
+                                    </table>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div style="margin-top:14px; font-size:11px;">
+                            <span style="color:#777;">Prepared for</span><br/>
+                            <strong style="font-size:13px;" t-field="doc.partner_id.name"/>
+                            <div t-if="doc.partner_id.phone" t-field="doc.partner_id.phone"/>
+                            <div t-if="doc.partner_id.email" t-field="doc.partner_id.email"/>
+                        </div>
+
+                        <!-- Line items -->
+                        <table class="rc-items">
+                            <thead>
+                                <tr t-attf-style="background:{{ brand['primary'] }};">
+                                    <th t-if="show_photos" class="rc-photo">Image</th>
+                                    <th>Description</th>
+                                    <th class="rc-num">Qty</th>
+                                    <th>Unit</th>
+                                    <th class="rc-num">Rate</th>
+                                    <th class="rc-num">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="lines" t-as="line">
+                                    <t t-set="parts" t-value="line._report_name_and_spec()"/>
+                                    <tr t-attf-class="#{ 'rc-band' if line_index % 2 else '' }">
+                                        <td t-if="show_photos" class="rc-photo">
+                                            <t t-set="photo" t-value="line._report_image()"/>
+                                            <img t-if="photo" t-att-src="image_data_uri(photo)"/>
+                                        </td>
+                                        <td>
+                                            <div class="rc-name"><t t-esc="parts[0]"/></div>
+                                            <div class="rc-spec" t-if="parts[1]">
+                                                <t t-foreach="parts[1]" t-as="spec">
+                                                    <div><t t-esc="spec"/></div>
+                                                </t>
+                                            </div>
+                                            <div class="rc-photo-note"
+                                                 t-if="line._report_photo_note()">
+                                                <t t-esc="line._report_photo_note()"/>
+                                            </div>
+                                        </td>
+                                        <td class="rc-num">
+                                            <span t-field="line.product_uom_qty"
+                                                  t-options='{"widget": "float", "precision": 0}'/>
+                                        </td>
+                                        <td><t t-esc="line._report_unit()"/></td>
+                                        <td class="rc-num">
+                                            <span t-field="line.price_unit"
+                                                  t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                        </td>
+                                        <td class="rc-num">
+                                            <span t-field="line.price_subtotal"
+                                                  t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+
+                        <!-- Totals -->
+                        <table class="rc-totals">
+                            <t t-set="discount" t-value="doc._report_discount_amount()"/>
+                            <tr class="rc-sub" t-if="discount">
+                                <td>Subtotal</td>
+                                <td class="rc-num">
+                                    <span t-esc="doc._report_gross_subtotal()"
+                                          t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                </td>
+                            </tr>
+                            <tr class="rc-disc" t-if="discount">
+                                <td>Discount</td>
+                                <td class="rc-num">
+                                    &#8722; <span t-esc="discount"
+                                          t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                </td>
+                            </tr>
+                            <tr class="rc-sub">
+                                <td><t t-esc="'Net Subtotal' if discount else 'Subtotal'"/></td>
+                                <td class="rc-num">
+                                    <span t-field="doc.amount_untaxed"
+                                          t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                </td>
+                            </tr>
+                            <tr class="rc-sub">
+                                <td>VAT</td>
+                                <td class="rc-num">
+                                    <span t-field="doc.amount_tax"
+                                          t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                </td>
+                            </tr>
+                            <tr class="rc-grand" t-attf-style="background:{{ brand['accent'] }};">
+                                <td>Grand Total</td>
+                                <td class="rc-num">
+                                    <span t-field="doc.amount_total"
+                                          t-options='{"widget": "monetary", "display_currency": doc.currency_id}'/>
+                                </td>
+                            </tr>
+                        </table>
+
+                        <div class="rc-terms" t-if="brand['terms']">
+                            <h4 t-attf-style="color:{{ brand['primary'] }};">Payment Terms</h4>
+                            <ul>
+                                <li t-foreach="brand['terms']" t-as="term"><t t-esc="term"/></li>
+                            </ul>
+                        </div>
+
+                        <div class="rc-terms" t-if="doc.note">
+                            <h4 t-attf-style="color:{{ brand['primary'] }};">Notes</h4>
+                            <div t-field="doc.note"/>
+                        </div>
+
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+
+    <record id="action_report_quotation_redcube" model="ir.actions.report">
+        <field name="name">Quotation</field>
+        <field name="model">sale.order</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">redcube_price_intelligence.report_quotation_redcube</field>
+        <field name="report_file">redcube_price_intelligence.report_quotation_redcube</field>
+        <field name="print_report_name">'Quotation - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="sale.model_sale_order"/>
+        <field name="binding_type">report</field>
+        <field name="paperformat_id" ref="base.paperformat_euro"/>
+    </record>
+
+</odoo>
