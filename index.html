@@ -9,48 +9,55 @@
 <body>
 
 <div class="app-shell">
-  <!-- Command bar: replaces the sidebar entirely. Brand + a sliding pill tab switcher +
-       search/status/settings/theme on the right, all in one floating glass strip. -->
-  <div class="cmdbar">
-    <div class="brandlock">
-      <div class="cube3d"><i class="f-top"></i><i class="f-side"></i><i class="f-bottom"></i></div>
-      <span class="brand-title" id="brand-title-text">Red Cube</span>
+  <!-- Persistent sidebar: replaces the floating command bar. All six destinations stay
+       visible at once (with live counts) instead of behind tabs the PM has to hunt through. -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-mark"><img src="assets/red_cube_logo.png" alt="" onerror="this.style.display='none'"></div>
+      <span class="brand-name" id="brand-title-text">Red Cube</span>
     </div>
 
-    <div class="segwrap" id="segwrap" role="tablist" aria-label="Primary navigation">
-      <div class="segpill" id="segpill"></div>
-      <button type="button" class="seg active" id="tab-btn-home" data-tab="home" role="tab" aria-selected="true" aria-controls="view-home" tabindex="0" onclick="switchTab('home')"><span class="icon" data-icon="layers"></span> Home</button>
-      <button type="button" class="seg" id="tab-btn-compiler" data-tab="compiler" role="tab" aria-selected="false" aria-controls="view-compiler" tabindex="-1" onclick="switchTab('compiler')"><span class="icon" data-icon="sheet"></span> Compiler</button>
-      <button type="button" class="seg" id="tab-btn-catalog" data-tab="catalog" role="tab" aria-selected="false" aria-controls="view-catalog" tabindex="-1" onclick="switchTab('catalog')"><span class="icon" data-icon="database"></span> Catalog</button>
-      <button type="button" class="seg" id="tab-btn-jobs" data-tab="jobs" role="tab" aria-selected="false" aria-controls="view-jobs" tabindex="-1" onclick="switchTab('jobs')"><span class="icon" data-icon="pin"></span> Jobs<span class="tab-count hidden" id="jobs-tab-count">0</span></button>
-      <button type="button" class="seg" id="tab-btn-review" data-tab="review" role="tab" aria-selected="false" aria-controls="view-review" tabindex="-1" onclick="switchTab('review')"><span class="icon" data-icon="alert"></span> Review<span class="tab-count hidden" id="review-tab-count">0</span></button>
-      <button type="button" class="seg" id="tab-btn-history" data-tab="history" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1" onclick="switchTab('history')"><span class="icon" data-icon="history"></span> Invoices</button>
-    </div>
+    <nav class="sidebar-nav" id="segwrap" role="tablist" aria-label="Primary navigation">
+      <button type="button" class="nav-item active" id="tab-btn-home" data-tab="home" role="tab" aria-selected="true" aria-controls="view-home" tabindex="0" onclick="switchTab('home')"><span class="nav-icon" data-icon="layers"></span><span class="nav-label">Home</span></button>
+      <button type="button" class="nav-item" id="tab-btn-compiler" data-tab="compiler" role="tab" aria-selected="false" aria-controls="view-compiler" tabindex="-1" onclick="switchTab('compiler')"><span class="nav-icon" data-icon="sheet"></span><span class="nav-label">Compiler</span></button>
+      <button type="button" class="nav-item" id="tab-btn-catalog" data-tab="catalog" role="tab" aria-selected="false" aria-controls="view-catalog" tabindex="-1" onclick="switchTab('catalog')"><span class="nav-icon" data-icon="database"></span><span class="nav-label">Catalog</span></button>
+      <button type="button" class="nav-item" id="tab-btn-jobs" data-tab="jobs" role="tab" aria-selected="false" aria-controls="view-jobs" tabindex="-1" onclick="switchTab('jobs')"><span class="nav-icon" data-icon="pin"></span><span class="nav-label">Jobs</span><span class="nav-count hidden" id="jobs-tab-count">0</span></button>
+      <button type="button" class="nav-item" id="tab-btn-review" data-tab="review" role="tab" aria-selected="false" aria-controls="view-review" tabindex="-1" onclick="switchTab('review')"><span class="nav-icon" data-icon="alert"></span><span class="nav-label">Review</span><span class="nav-count hidden" id="review-tab-count">0</span></button>
+      <button type="button" class="nav-item" id="tab-btn-history" data-tab="history" role="tab" aria-selected="false" aria-controls="view-history" tabindex="-1" onclick="switchTab('history')"><span class="nav-icon" data-icon="history"></span><span class="nav-label">Invoices</span></button>
+    </nav>
 
-    <div class="cmd-right">
-      <button type="button" class="cmdk" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="search"></span>Search items<kbd>Ctrl K</kbd></button>
-      <div class="status-badge">
-        <span id="db-indicator" class="status-dot"></span>
-        <span id="db-status-text">Checking database...</span>
-      </div>
+    <div class="sidebar-footer">
       <button class="icon-btn" onclick="openSettingsModal()" title="Workspace settings"><span class="icon" data-icon="settings"></span></button>
       <button class="icon-btn" onclick="toggleTheme()" title="Toggle theme"><span class="icon" id="theme-toggle-icon" data-icon="sun"></span></button>
     </div>
-  </div>
+  </aside>
 
   <div class="app-content">
-    <!-- Shown only for the Compiler tab, which has no headline of its own otherwise. -->
-    <div class="page-head hidden" id="page-head">
-      <div><span class="eyebrow" id="page-eyebrow">Quotation Builder</span><h2 id="page-title">Compiler Workspace</h2></div>
+    <!-- Always visible (not just on one tab) — the current page and global search are
+         never more than a glance away, whichever view is open. -->
+    <div class="topbar" id="topbar">
+      <div>
+        <span class="topbar-eyebrow" id="page-eyebrow"></span>
+        <h1 class="topbar-h1" id="page-title">Home</h1>
+      </div>
+      <div class="topbar-right">
+        <button type="button" class="cmdk" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="search"></span>Search items<kbd>Ctrl K</kbd></button>
+        <div class="status-badge">
+          <span id="db-indicator" class="status-dot"></span>
+          <span id="db-status-text">Checking database...</span>
+        </div>
+      </div>
     </div>
 
 <!-- Home -->
 <main class="main-view" id="view-home" role="tabpanel" aria-labelledby="tab-btn-home" tabindex="0">
   <div class="home-view">
     <section class="home-hero">
-      <div class="home-hero-logo"><img src="assets/red_cube_logo.png" alt="Logo" onerror="this.style.display='none'"></div>
-      <h1 class="home-hero-title" id="home-greeting-title">Welcome back</h1>
-      <p class="home-hero-subtitle" id="home-greeting-subtitle">Search historical rates, compile a quote, and get it out the door in minutes.</p>
+      <div>
+        <h2 class="home-hero-title" id="home-greeting-title">Welcome back</h2>
+        <p class="home-hero-subtitle" id="home-greeting-subtitle">Search historical rates, compile a quote, and get it out the door in minutes.</p>
+      </div>
+      <button type="button" class="btn btn-primary" onclick="goToNewQuotation()"><span class="icon icon-sm" data-icon="sparkles"></span> New Quotation</button>
     </section>
 
     <section class="home-actions">
@@ -152,7 +159,7 @@
 
     <!-- Drag to rebalance matcher vs. compiler; double-click resets. -->
     <div class="workspace-splitter" id="workspace-splitter" role="separator" aria-orientation="vertical"
-         aria-label="Resize panels" tabindex="0" title="Drag to resize · double-click to reset"></div>
+         aria-label="Resize panels" aria-valuemin="0" aria-valuemax="100" tabindex="0" title="Drag to resize · double-click to reset"></div>
 
     <!-- Right: quotation compiler -->
     <div class="panel panel-right">
@@ -178,7 +185,7 @@
 
       <!-- Drag to trade space between the item list and the pricing block; double-click resets. -->
       <div class="compiler-vsplit" id="compiler-vsplit" role="separator" aria-orientation="horizontal"
-           aria-label="Resize items and pricing" tabindex="0" title="Drag to resize · double-click to reset"></div>
+           aria-label="Resize items and pricing" aria-valuemin="150" tabindex="0" title="Drag to resize · double-click to reset"></div>
 
       <div class="compiler-footer" id="compiler-footer">
         <div class="summary-box">
@@ -319,10 +326,10 @@
 
 <!-- Workspace settings modal: was a permanent panel eating a whole column for something
      touched once a week. Now a dialog behind the gear icon in the command bar. -->
-<div class="modal-overlay" id="settings-modal-overlay">
+<div class="modal-overlay" id="settings-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="settings-modal-title">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Workspace Settings</div>
+      <div class="modal-title" id="settings-modal-title">Workspace Settings</div>
       <button type="button" class="icon-btn" onclick="closeSettingsModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body">
@@ -340,10 +347,10 @@
 </div>
 
 <!-- Image picker modal -->
-<div class="modal-overlay" id="image-picker-overlay">
+<div class="modal-overlay" id="image-picker-overlay" role="dialog" aria-modal="true" aria-labelledby="image-picker-title">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Set Line Item Image</div>
+      <div class="modal-title" id="image-picker-title">Set Line Item Image</div>
       <button type="button" class="icon-btn" onclick="closeImagePicker()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body">
@@ -385,10 +392,10 @@
 </div>
 
 <!-- Success / share modal -->
-<div class="modal-overlay" id="success-modal-overlay">
+<div class="modal-overlay" id="success-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="success-modal-title">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title"><span class="icon icon-sm" data-icon="check" style="color:var(--success);"></span> Quotation Generated</div>
+      <div class="modal-title" id="success-modal-title"><span class="icon icon-sm" data-icon="check" style="color:var(--success);"></span> Quotation Generated</div>
       <button type="button" class="icon-btn" onclick="closeSuccessModal()" aria-label="Close"><span class="icon icon-sm" data-icon="close"></span></button>
     </div>
     <div class="modal-body" id="success-modal-body"></div>
@@ -399,7 +406,7 @@
 </div>
 
 <!-- Client ledger modal -->
-<div class="modal-overlay" id="client-ledger-modal-overlay">
+<div class="modal-overlay" id="client-ledger-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="client-ledger-modal-title">
   <div class="modal" style="width:560px;">
     <div class="modal-header">
       <div class="modal-title" id="client-ledger-modal-title">Client Ledger</div>
@@ -410,7 +417,7 @@
 </div>
 
 <!-- Catalog item add/edit modal -->
-<div class="modal-overlay" id="catalog-item-modal-overlay">
+<div class="modal-overlay" id="catalog-item-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="catalog-item-modal-title">
   <div class="modal">
     <div class="modal-header">
       <div class="modal-title" id="catalog-item-modal-title">Add Catalog Item</div>

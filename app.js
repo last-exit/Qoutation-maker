@@ -159,7 +159,6 @@ document.addEventListener('keydown', function (e) {
 initTheme();
 hydrateIcons();
 renderDraft();
-positionActiveTabPill();
 initTabsKeyboardNav();
 initWorkspaceSplitter();
 initCompilerVSplit();
@@ -390,6 +389,7 @@ function initCompilerVSplit() {
     footerH = Math.min(maxFooter, Math.max(MIN_FOOTER, h));
     footer.style.height = footerH + 'px';
     splitter.setAttribute('aria-valuenow', Math.round(footerH));
+    splitter.setAttribute('aria-valuemax', Math.round(maxFooter));
   }
 
   // Until the PM interacts, the footer is content-sized and footerH is unset. Any relative
@@ -454,8 +454,6 @@ function initCompilerVSplit() {
 }
 
 const TAB_TITLES = { home: 'Home', compiler: 'Compiler Workspace', catalog: 'Item Catalog', jobs: 'Jobs', review: 'Needs Review', history: 'Quotation History' };
-// Home has its own hero; Review/History already carry a panel title. Only Compiler
-// gets the shared page-head, since it's the one view that never had a headline.
 const TAB_EYEBROWS = { compiler: 'Quotation Builder' };
 
 function switchTab(tab) {
@@ -466,22 +464,17 @@ function switchTab(tab) {
   document.getElementById('view-history').classList.toggle('hidden', tab !== 'history');
   document.getElementById('view-review').classList.toggle('hidden', tab !== 'review');
 
-  document.querySelectorAll('.seg').forEach(function (s) {
+  document.querySelectorAll('.nav-item').forEach(function (s) {
     const isActive = s.getAttribute('data-tab') === tab;
     s.classList.toggle('active', isActive);
     s.setAttribute('aria-selected', String(isActive));
     s.tabIndex = isActive ? 0 : -1;
   });
-  positionActiveTabPill();
 
-  const pageHead = document.getElementById('page-head');
-  if (tab === 'compiler') {
-    pageHead.classList.remove('hidden');
-    document.getElementById('page-eyebrow').innerText = TAB_EYEBROWS[tab] || '';
-    document.getElementById('page-title').innerText = TAB_TITLES[tab];
-  } else {
-    pageHead.classList.add('hidden');
-  }
+  // The topbar stays visible on every tab now (not just Compiler), so its title/eyebrow
+  // always describe whichever view is open.
+  document.getElementById('page-eyebrow').innerText = TAB_EYEBROWS[tab] || '';
+  document.getElementById('page-title').innerText = TAB_TITLES[tab];
 
   if (tab === 'home') loadHomeDashboard();
   if (tab === 'catalog') loadCatalog();
@@ -490,30 +483,19 @@ function switchTab(tab) {
   if (tab === 'review') loadReviewQueue();
 }
 
-// Slides the dark (or cherry, on Asphalt mode) pill under whichever tab is active —
-// the sidebar's stacked nav had no equivalent motion, this is the top-nav's signature move.
-function positionActiveTabPill() {
-  const wrap = document.getElementById('segwrap');
-  const pill = document.getElementById('segpill');
-  const active = wrap && wrap.querySelector('.seg.active');
-  if (!wrap || !pill || !active) return;
-  pill.style.width = active.offsetWidth + 'px';
-  pill.style.transform = 'translateX(' + active.offsetLeft + 'px)';
-}
-window.addEventListener('resize', positionActiveTabPill);
-
-// Arrow-key traversal for the tablist, per the standard ARIA tabs pattern: Left/Right move
-// focus and activate the neighboring tab (Home/End jump to the first/last).
+// Arrow-key traversal for the tablist, per the standard ARIA tabs pattern: Up/Down move
+// focus and activate the neighboring item (Home/End jump to the first/last) — Up/Down
+// rather than Left/Right now that navigation is a vertical sidebar list.
 function initTabsKeyboardNav() {
   const wrap = document.getElementById('segwrap');
   if (!wrap) return;
   wrap.addEventListener('keydown', function (e) {
-    const tabs = Array.from(wrap.querySelectorAll('.seg'));
+    const tabs = Array.from(wrap.querySelectorAll('.nav-item'));
     const currentIndex = tabs.indexOf(document.activeElement);
     if (currentIndex === -1) return;
     let nextIndex = null;
-    if (e.key === 'ArrowRight') nextIndex = (currentIndex + 1) % tabs.length;
-    else if (e.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+    if (e.key === 'ArrowDown') nextIndex = (currentIndex + 1) % tabs.length;
+    else if (e.key === 'ArrowUp') nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
     else if (e.key === 'Home') nextIndex = 0;
     else if (e.key === 'End') nextIndex = tabs.length - 1;
     else return;
@@ -1342,6 +1324,9 @@ function updateQuoteStatus(id, status) {
 
 function cloneHistoryItem(id) {
   if (!api()) return;
+  // Loading a past quote overwrites the draft wholesale — ask first, or a PM mid-edit on a
+  // real quote loses it the instant they click a Recent Quotation card by mistake.
+  if (draftItems.length > 0 && !confirm(`Load this quotation into the Compiler? Your current draft (${draftItems.length} item${draftItems.length === 1 ? '' : 's'}) will be replaced.`)) return;
   api().get_history_item(id).then(function (res) {
     if (!res.success) { showToast(res.error, 'error'); return; }
     const q = res.item;
