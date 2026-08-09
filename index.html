@@ -20,6 +20,7 @@
     <nav class="sidebar-nav" id="segwrap" role="tablist" aria-label="Primary navigation">
       <button type="button" class="nav-item active" id="tab-btn-home" data-tab="home" role="tab" aria-selected="true" aria-controls="view-home" tabindex="0" onclick="switchTab('home')"><span class="nav-icon" data-icon="layers"></span><span class="nav-label">Home</span></button>
       <button type="button" class="nav-item" id="tab-btn-compiler" data-tab="compiler" role="tab" aria-selected="false" aria-controls="view-compiler" tabindex="-1" onclick="switchTab('compiler')"><span class="nav-icon" data-icon="sheet"></span><span class="nav-label">Compiler</span></button>
+      <button type="button" class="nav-item" id="tab-btn-estimator" data-tab="estimator" role="tab" aria-selected="false" aria-controls="view-estimator" tabindex="-1" onclick="switchTab('estimator')"><span class="nav-icon" data-icon="sparkles"></span><span class="nav-label">Estimator</span></button>
       <button type="button" class="nav-item" id="tab-btn-catalog" data-tab="catalog" role="tab" aria-selected="false" aria-controls="view-catalog" tabindex="-1" onclick="switchTab('catalog')"><span class="nav-icon" data-icon="database"></span><span class="nav-label">Catalog</span></button>
       <button type="button" class="nav-item" id="tab-btn-jobs" data-tab="jobs" role="tab" aria-selected="false" aria-controls="view-jobs" tabindex="-1" onclick="switchTab('jobs')"><span class="nav-icon" data-icon="pin"></span><span class="nav-label">Jobs</span><span class="nav-count hidden" id="jobs-tab-count">0</span></button>
       <button type="button" class="nav-item" id="tab-btn-review" data-tab="review" role="tab" aria-selected="false" aria-controls="view-review" tabindex="-1" onclick="switchTab('review')"><span class="nav-icon" data-icon="alert"></span><span class="nav-label">Review</span><span class="nav-count hidden" id="review-tab-count">0</span></button>
@@ -317,6 +318,41 @@
     </div>
     <div class="panel-body" style="padding-top:0;">
       <div id="review-queue-list"></div>
+    </div>
+  </div>
+</main>
+
+<!-- Automated Design Estimator: drawings in, priced BOQ out. Every figure here is
+     deterministic geometry against master_rate_card.csv — no model, no guessing. -->
+<main class="main-view hidden" id="view-estimator" role="tabpanel" aria-labelledby="tab-btn-estimator" tabindex="0">
+  <div class="panel" style="height:100%;">
+    <div class="panel-header">
+      <div class="panel-title"><span class="icon" data-icon="sparkles"></span><span>Automated Design Estimator</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span id="est-ratecard-badge" class="est-badge"></span>
+        <button class="btn btn-ghost" id="est-clear-btn" onclick="clearEstimator()" style="display:none;">
+          <span class="icon icon-sm" data-icon="trash"></span> Clear
+        </button>
+        <button class="btn btn-primary" onclick="pickDesignFiles()">
+          <span class="icon icon-sm" data-icon="upload"></span> Upload Drawings
+        </button>
+      </div>
+    </div>
+
+    <div class="panel-body">
+      <div class="est-dropzone" id="est-dropzone" onclick="pickDesignFiles()">
+        <span class="icon icon-lg" data-icon="upload"></span>
+        <p class="est-dropzone-title">Drop in your design drawings</p>
+        <p class="est-dropzone-sub">
+          Multi-page PDF decks, PNG or JPG &mdash; several files at once.
+          Dimensions, titles and cutouts are read straight off each sheet.
+        </p>
+      </div>
+
+      <div id="est-notice" class="est-notice hidden"></div>
+      <div id="est-loading" class="hidden" style="padding:14px 0;"></div>
+      <div id="est-pages"></div>
+      <div id="est-summary"></div>
     </div>
   </div>
 </main>

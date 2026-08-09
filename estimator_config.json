@@ -1,0 +1,11 @@
+{
+  "_comment": "Labor rates in AED/hour and the default margin for the Automated Design Estimator. The material rate card carries no labor rows, so these live here. Adding a 'Labor' category to the rate card CSV overrides these values.",
+  "labor_rates": {
+    "carpentry": 45.0,
+    "painting": 38.0,
+    "electrical": 55.0,
+    "assembly": 35.0,
+    "finishing": 42.0
+  },
+  "margin_pct": 35.0
+}

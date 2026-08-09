@@ -26,6 +26,9 @@ import sharing
 import corrections_db
 import catalog_db
 from embedder import get_embedder
+import design_parser
+import calculators
+import rate_card
 
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
 COLLECTION_NAME = "quotation_items"
@@ -1073,6 +1076,210 @@ class QuotationApi:
             return {"success": True, "count": self.photo_collection.count()}
         except Exception as e:
             return {"success": False, "error": str(e), "count": 0}
+
+    # --- Automated Design Estimator ----------------------------------------------
+    # Drawings in, priced BOQ out. The split is deliberate: design_parser only reports
+    # what a drawing says, calculators owns every number, and this class is a thin
+    # transport layer between them and the UI. Nothing here does arithmetic on a price.
+
+    def get_estimator_options(self):
+        """Dropdown options, rate-card constants and OCR availability for the estimator tab."""
+        try:
+            card = rate_card.get_rate_card()
+            payload = calculators.options_payload(card)
+            payload["ocr"] = design_parser.ocr_status()
+            payload["rate_card"] = {
+                "source": card.source_path.name,
+                "item_count": len(card.items),
+                "categories": card.categories(),
+            }
+            return {"success": True, "options": payload}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def pick_design_files(self):
+        """Native multi-select dialog for drawing files.
+
+        pywebview's drag-and-drop cannot hand back a filesystem path on Windows, so the
+        drop zone in the UI routes here — the PM still gets one click to a multi-select.
+        """
+        try:
+            window = webview.windows[0]
+            result = window.create_file_dialog(
+                webview.OPEN_DIALOG,
+                allow_multiple=True,
+                file_types=(
+                    'Drawings (*.pdf;*.png;*.jpg;*.jpeg;*.bmp;*.webp)',
+                    'PDF Drawings (*.pdf)',
+                    'Images (*.png;*.jpg;*.jpeg;*.bmp;*.webp)',
+                ),
+            )
+            if not result:
+                return {"success": False, "error": "No files selected."}
+            return {"success": True, "paths": list(result)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def parse_design_files(self, paths):
+        """Parses selected drawings into per-page detected specs plus preview images."""
+        try:
+            if not paths:
+                return {"success": False, "error": "No files to parse."}
+            return design_parser.parse_files(list(paths))
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def compute_design_estimate(self, payload):
+        """Recomputes every page's BOQ and the cumulative master summary.
+
+        Called on load and again on every manual override, so the numbers on screen are
+        always the result of the current dimensions rather than a cached first pass.
+        """
+        try:
+            specs = (payload or {}).get("specs") or []
+            if not specs:
+                return {"success": False, "error": "No items to cost."}
+
+            card = rate_card.get_rate_card()
+            margin_pct = (payload or {}).get("margin_pct")
+
+            items, errors = [], []
+            for index, spec in enumerate(specs):
+                label = spec.get("label") or f"Item {index + 1}"
+                try:
+                    boq = calculators.compute_item_boq(spec, card)
+                    boq["spec_index"] = index
+                    items.append(boq)
+                except rate_card.MissingRateError as exc:
+                    # A missing code is a data problem the PM can fix from the UI right here —
+                    # naming the item and the code beats failing the whole batch with a bare
+                    # KeyError, and lets the frontend offer a one-click "add this material".
+                    errors.append({
+                        "index": index, "label": label,
+                        "code": getattr(exc, "code", None), "message": str(exc),
+                    })
+                except Exception as exc:
+                    errors.append({"index": index, "label": label, "code": None, "message": str(exc)})
+
+            if not items:
+                joined = "; ".join(e["message"] for e in errors)
+                return {"success": False, "error": joined or "Nothing could be costed."}
+
+            summary = calculators.aggregate(items, margin_pct, card)
+            return {"success": True, "items": items, "summary": summary, "errors": errors}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def add_rate_card_item(self, payload):
+        """Adds a new material row to the master rate card CSV from the estimator UI.
+
+        Called when a BOQ line references a code the card doesn't have — the PM names,
+        categorizes and prices it here instead of leaving the item permanently unpriced
+        or hand-editing the CSV outside the app.
+        """
+        try:
+            payload = payload or {}
+            card = rate_card.add_rate_card_item(
+                code=payload.get("code"),
+                description=payload.get("description"),
+                unit=payload.get("unit") or "Unit",
+                avg_cost=payload.get("avg_cost"),
+                category=payload.get("category") or "Uncategorized",
+                usage=payload.get("usage") or "",
+            )
+            options = calculators.options_payload(card)
+            options["ocr"] = design_parser.ocr_status()
+            options["rate_card"] = {
+                "source": card.source_path.name,
+                "item_count": len(card.items),
+                "categories": card.categories(),
+            }
+            return {"success": True, "options": options}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def merge_designs_to_proposal(self, payload):
+        """Turns the estimate into quotation line items, and optionally a factory BOQ sheet.
+
+        Client lines are handed back for the Compiler draft rather than compiled here, so
+        the existing quotation path — pricing, discount, VAT, Word/Excel, PDF, history —
+        stays the single way a document gets made. The factory sheet is a separate
+        artefact at factory cost, which must never reach the client.
+        """
+        try:
+            specs = (payload or {}).get("specs") or []
+            if not specs:
+                return {"success": False, "error": "No items to merge."}
+
+            card = rate_card.get_rate_card()
+            margin_pct = (payload or {}).get("margin_pct")
+
+            items, blocked = [], []
+            for index, spec in enumerate(specs):
+                label = spec.get("label") or f"Item {index + 1}"
+                try:
+                    boq = calculators.compute_item_boq(spec, card)
+                except rate_card.MissingRateError as exc:
+                    blocked.append(f"{label}: {exc}")
+                    continue
+                if boq["needs_dimensions"]:
+                    blocked.append(f"{label}: {boq['dimension_message']}")
+                    continue
+                items.append(boq)
+
+            if blocked:
+                # A zero-cost line on the client quotation reads as a free item, which is
+                # the one failure mode worse than making the PM go back and fix it first.
+                return {"success": False, "error": "Fix before merging — " + "; ".join(blocked)}
+            if not items:
+                return {"success": False, "error": "No priced items to merge."}
+
+            summary = calculators.aggregate(items, margin_pct, card)
+
+            client_rows = calculators.to_quotation_items(items, summary, mode="client")
+
+            factory_path = ""
+            if (payload or {}).get("include_factory_sheet"):
+                factory_rows = calculators.to_quotation_items(items, summary, mode="factory")
+                factory_path = self._write_factory_boq(factory_rows, summary, payload)
+
+            return {
+                "success": True,
+                "client_items": client_rows,
+                "summary": summary,
+                "factory_sheet": factory_path,
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _write_factory_boq(self, factory_rows, summary, payload):
+        """Writes the production take-off to its own workbook, reusing the Excel generator."""
+        client_name = ((payload or {}).get("client_name") or "Client").strip()
+        safe_client = re.sub(r'[\\/*?:"<>|]', "", client_name) or "Client"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+
+        sync_path_obj = Path(self.sync_path)
+        try:
+            sync_path_obj.mkdir(parents=True, exist_ok=True)
+            out_path = sync_path_obj / f"{safe_client}_FactoryBOQ_{timestamp}.xlsx"
+        except Exception:
+            out_path = Path(f"{safe_client}_FactoryBOQ_{timestamp}.xlsx")
+
+        template_path = Path("template.xlsx")
+        if not template_path.exists():
+            doc_generator.create_fallback_template(str(template_path))
+
+        meta = {
+            "client_name": f"{client_name} - FACTORY PRODUCTION BOQ",
+            "venue": (payload or {}).get("venue", ""),
+            "quote_date": datetime.now().strftime("%Y-%m-%d"),
+            "discount_type": None,
+            "discount_value": 0,
+            "valid_until": "",
+            "quote_ref": f"BOQ-{timestamp}",
+        }
+        doc_generator.generate_excel_dynamic(factory_rows, meta, template_path, out_path)
+        return str(out_path.resolve())
 
     # --- Sharing ----------------------------------------------------------------
 

@@ -1,0 +1,60 @@
+Category,Item Code,Description / Specification,Unit,Price Range (AED),Avg. Cost (AED),Typical Usage
+Wood & Boards,WD-MDF-18,"MDF Plain (18mm, 8x4ft)",Sheet,58.00 – 72.00,65,"Standard structural walls, counters, display bases"
+Wood & Boards,WD-MDF-18MR,"MDF Moisture Resistant (18mm, Green)",Sheet,78.00 – 92.00,85,"Wet area counters, outdoor structural components"
+Wood & Boards,WD-MDF-12,MDF Plain (12mm),Sheet,42.00 – 52.00,48,"Lightweight shelving, backing panels"
+Wood & Boards,WD-MDF-06,MDF Plain (6mm),Sheet,26.00 – 34.00,30,"Curved walls, flexible cladding skins"
+Wood & Boards,WD-MDF-03,MDF Plain (3mm),Sheet,18.00 – 24.00,21,"Drawer bottoms, light backing"
+Wood & Boards,WD-PLY-18M,Marine Plywood (18mm),Sheet,98.00 – 120.00,110,"Heavy structural stages, sub-floors, outdoor bases"
+Wood & Boards,WD-PLY-18C,Commercial Plywood (18mm),Sheet,68.00 – 82.00,75,"Internal framing, load-bearing shelves"
+Wood & Boards,WD-PLY-09,Commercial Plywood (9mm),Sheet,45.00 – 55.00,50,"Internal panelling, bracing"
+Wood & Boards,WD-BLK-18,Blockboard (18mm),Sheet,62.00 – 75.00,70,"Long span shelves, doors (prevents sagging)"
+Wood & Boards,WD-FRM-2X2,"White Wood Studs (2"" x 2"" x 4m)",Piece,12.00 – 18.00,15,Standard internal wall skeletons
+Wood & Boards,WD-FRM-2X4,"White Wood Studs (2"" x 4"" x 4m)",Piece,24.00 – 32.00,28,"Heavy load-bearing framing, stage supports"
+Wood & Boards,WD-VEN-OAK,Natural Oak Wood Veneer (0.6mm),Sqm,25.00 – 40.00,32,High-end wooden finish over MDF
+Plastics & Acrylic,PL-ACR-03C,"Acrylic Clear (3mm, 8x4ft)",Sheet,115.00 – 140.00,128,"Display boxes, protective screens"
+Plastics & Acrylic,PL-ACR-05C,Acrylic Clear (5mm),Sheet,185.00 – 225.00,205,"Heavy-duty clear shelving, structural guards"
+Plastics & Acrylic,PL-ACR-03W,Acrylic Opal / Milky White (3mm),Sheet,130.00 – 155.00,142,"Backlit logos, glowing lightboxes"
+Plastics & Acrylic,PL-ACR-03AM,Acrylic Tinted / Amber (3mm),Sheet,145.00 – 175.00,160,"Decorative specialty panels, warm retro displays"
+Plastics & Acrylic,PL-ACR-05AM,Acrylic Tinted / Amber (5mm),Sheet,210.00 – 250.00,230,"Premium decorative dividers, cosmetic displays"
+Plastics & Acrylic,PL-FRX-03,Forex / PVC Foam Board (3mm),Sheet,38.00 – 50.00,44,"Lightweight signage, 3D cut logos"
+Plastics & Acrylic,PL-FRX-05,Forex / PVC Foam Board (5mm),Sheet,65.00 – 82.00,72,"Sturdy rigid backing panels, flat signs"
+Plastics & Acrylic,PL-PLY-06,Polycarbonate Twin-Wall (6mm),Sheet,120.00 – 160.00,140,"Translucent outdoor roofing, lightweight partitions"
+Metals & Glass,MT-MSB-25,"Mild Steel Box Tube (25x25x1.5mm, 6m)",Length,24.00 – 32.00,28,"Light metal frames, internal supports"
+Metals & Glass,MT-MSB-40,"Mild Steel Box Tube (40x40x2.0mm, 6m)",Length,42.00 – 55.00,48,"Heavy structural frames, overhead rigs"
+Metals & Glass,MT-ALB-40,"Aluminum Box Tube (40x40x2.0mm, 6m)",Length,68.00 – 85.00,76,Rust-free lightweight frames
+Metals & Glass,MT-ALA-25,"Aluminum L-Angle (25x25x2.0mm, 6m)",Length,28.00 – 38.00,33,"Edge protection, counter trims"
+Metals & Glass,MT-SS-SHT,"Stainless Steel Sheet (Brushed, 1.2mm)",Sheet,220.00 – 280.00,250,"Premium kitchen pop-ups, durable claddings"
+Metals & Glass,GL-CLR-06,Clear Float Glass (6mm),Sqm,45.00 – 60.00,52,"Display cases, kiosk windows"
+Metals & Glass,GL-TMP-08,Tempered Safety Glass (8mm),Sqm,90.00 – 130.00,110,"Frameless doors, heavy duty display tops"
+Metals & Glass,GL-AMB-06,Amber / Bronze Tinted Glass (6mm),Sqm,75.00 – 105.00,90,"High-end decorative partitions, retail shelves"
+Metals & Glass,GL-MIR-06,Silver Mirror Glass (6mm),Sqm,60.00 – 85.00,72,"Dressing rooms, optical illusion walls"
+Finishes & Decor,FN-HPL-SOL,"HPL Laminate (Solid Color, 0.8mm)",Sheet,48.00 – 65.00,55,"Standard countertops, durable wall finishes"
+Finishes & Decor,FN-HPL-WOD,HPL Laminate (Woodgrain Texture),Sheet,75.00 – 105.00,88,"Premium counter finishes, rustic themes"
+Finishes & Decor,FN-VNL-PRT,Printed Self-Adhesive Vinyl + Lam,Sqm,28.00 – 42.00,35,"Branding wraps, custom wall graphics"
+Finishes & Decor,FN-VNL-CUT,Plotter Cut Vinyl (Solid Color),Sqm,18.00 – 28.00,23,"Decals, vector logos, window frosting"
+Finishes & Decor,FN-FAB-BLK,Blockout Fabric (For Lightboxes),Sqm,35.00 – 55.00,45,"Tension fabric frames, seamless branding"
+Finishes & Decor,FN-COR-12,Solid Surface / Corian (12mm),Sqm,450.00 – 700.00,580,High-end seamless counters (F&B / Cosmetics)
+Paints & Chems,PT-EML-18L,Matt Emulsion Paint (18L Drum),Drum,140.00 – 185.00,160,Basic wall painting (covers ~80 sqm)
+Paints & Chems,PT-PRM-05L,Wood Primer / Sealer (5L Can),Can,45.00 – 62.00,54,MDF surface preparation
+Paints & Chems,PT-PU-01L,PU Spray Paint Finish (Gloss/Matt 1L),Liter,38.00 – 52.00,45,High-end flawless spray finish for counters
+Paints & Chems,AD-GLU-15L,Contact Adhesive (15L Drum),Drum,125.00 – 155.00,140,Bonding laminates and heavy vinyls
+Paints & Chems,AD-WD-05L,PVA Wood Glue (5L),Can,35.00 – 50.00,42,"Carpentry joints, laminating MDF layers"
+Paints & Chems,AD-SIL-300,"Silicone Sealant (Clear/White, 300ml)",Tube,9.00 – 15.00,12,"Joint sealing, glass fixing"
+Paints & Chems,PT-THN-05L,Paint Thinner (5L),Can,25.00 – 35.00,30,"Cleaning spray guns, thinning PU paint"
+Flooring,FL-CPT-EXH,"Exhibition Carpet (Ribbed, 100 GSM)",Sqm,7.50 – 11.00,9,Temporary event booth flooring
+Flooring,FL-VNL-LVT,Commercial LVT / Sheet Vinyl,Sqm,28.00 – 45.00,35,Premium pop-up store wooden flooring
+Flooring,FL-TRF-15,Artificial Grass / Turf (15mm Pile),Sqm,18.00 – 26.00,22,"Outdoor theme zones, activation play areas"
+Flooring,FL-TRF-30,Artificial Grass / Turf (30mm Premium),Sqm,35.00 – 50.00,42,High-end landscape themes
+Flooring,FL-POD-ADJ,Raised Decking Pedestals (Adjustable),Unit,14.00 – 22.00,18,Cable management raised floors
+Hardware,HW-TVM-65,Heavy Duty TV Wall Mount Bracket,Unit,35.00 – 58.00,45,Mounting screens onto feature walls
+Hardware,HW-HNG-SC,Concealed Cabinet Hinges (Soft-close),Pair,6.00 – 11.00,8.5,Storage cabinet doors
+Hardware,HW-RUN-450,Drawer Telescopic Runners (450mm),Pair,12.00 – 20.00,16,"Kiosk cash drawers, slide-out storage"
+Hardware,HW-LCK-CAM,Cam Lock (For drawers/cabinets),Unit,8.00 – 15.00,12,Securing storage in public event spaces
+Hardware,HW-SCR-BLK,Drywall / Black Screws (Box of 1000),Box,25.00 – 35.00,30,General assembly and framing
+Hardware,HW-LBR-05,L-Brackets / Corner Braces (Metal),Unit,1.50 – 3.00,2,Reinforcing internal wood joints
+Elect & Light,EL-LED-12W,LED Strip Light 12V Warm/Cool (5m),Roll,22.00 – 38.00,30,Recessed feature wall / toe-kick lighting
+Elect & Light,EL-LED-RGB,LED Strip Light RGB (5m),Roll,45.00 – 70.00,55,Color-changing dynamic kiosk accents
+Elect & Light,EL-TRN-200,LED Power Supply / Driver (12V 200W),Unit,45.00 – 68.00,55,Powering strip lights safely
+Elect & Light,EL-SPT-07W,Recessed LED Downlight (7W - 10W),Unit,18.00 – 28.00,23,Product display and ceiling spot lighting
+Elect & Light,EL-SKT-DBL,Double 13A Power Socket (UK Standard),Unit,15.00 – 25.00,20,Client power access in kiosks
+Elect & Light,EL-CBL-1.5,3-Core Flexible Cable 1.5mm (100m),Roll,110.00 – 140.00,125,Internal booth wiring

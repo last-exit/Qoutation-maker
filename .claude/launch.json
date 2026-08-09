@@ -24,6 +24,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "/Users/fazalhaque/lifeos", "run", "dev"],
       "port": 4321
+    },
+    {
+      "name": "quotation-ui",
+      "runtimeExecutable": "venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "http.server", "8777"],
+      "port": 8777
     }
   ]
 }
