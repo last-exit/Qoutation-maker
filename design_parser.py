@@ -258,6 +258,72 @@ def _pick_title(spans):
     return candidates[0][2]
 
 
+# A dimension written against its own name — "DEPTH 600 mm", "HEIGHT: 2400" — rather than
+# as part of an LxH callout. Draughtsmen write the depth of a counter or the height of an
+# arch this way constantly, and reading only the paired callouts threw those away: the value
+# was sitting in the OCR text, correctly recognised, and still came back as 0.
+_LABELLED_DIM = re.compile(
+    r"\b(depth|deep|height|high|ht|length|long|width|wide)\b"
+    r"\s*[:=]?\s*"
+    r"(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?\b",
+    re.IGNORECASE,
+)
+
+# Which spec field each label feeds. "Width" maps to length because in this model the long
+# horizontal run is length_m for every item type — a counter's width is its run, and its
+# front-to-back measurement is the one called depth.
+#
+# THK/THICKNESS are deliberately absent. On a shop drawing they name the board — "THK 18"
+# is 18 mm MDF — not how deep the counter is. Reading that as depth would set a 4 m counter
+# 18 mm deep and quote a worktop of almost no area, which is precisely the confident-looking
+# wrong number this parser is supposed to stop producing.
+_LABEL_FIELDS = {
+    "depth": "depth_m", "deep": "depth_m",
+    "height": "height_m", "high": "height_m", "ht": "height_m",
+    "length": "length_m", "long": "length_m", "width": "length_m", "wide": "length_m",
+}
+
+
+def extract_labelled_dimensions(text):
+    """Named dimensions found in the drawing text, as {field: metres}.
+
+    Later mentions lose to earlier ones: the first time a sheet names a dimension is
+    normally the primary callout, and repeats tend to be detail or section notes.
+    """
+    found = {}
+    for match in _LABELLED_DIM.finditer(text or ""):
+        field = _LABEL_FIELDS[match.group(1).lower()]
+        if field in found:
+            continue
+        value = float(match.group(2).replace(",", "."))
+        unit = (match.group(3) or "").lower() or _infer_bare_unit(value)
+        found[field] = round(_to_meters(value, unit), 3)
+    return found
+
+
+def _apply_labelled_dimensions(text, assigned):
+    """Fills gaps in `assigned` from named callouts, without overriding what was measured.
+
+    Only fields the pair/triple pass left at zero are touched. A drawing that states both
+    "5000 x 2400" and "HEIGHT 2400" should keep the paired reading, which is the stronger
+    signal; this exists for the dimension that appears *only* as a label.
+    """
+    labelled = extract_labelled_dimensions(text)
+    filled = []
+    for field, meters in labelled.items():
+        if meters > 0 and float(assigned.get(field) or 0.0) <= 0:
+            assigned[field] = meters
+            filled.append(field)
+
+    if filled:
+        source = assigned.get("source_text") or ""
+        names = ", ".join(f.replace("_m", "") for f in filled)
+        assigned["source_text"] = f"{source} + labelled {names}".strip(" +")
+        if assigned.get("confidence") in (None, "none"):
+            assigned["confidence"] = "low"
+    return filled
+
+
 def _assign_dimensions(dimensions, item_type):
     """Turns a page's dimension list into length/height/depth in metres.
 
@@ -435,6 +501,7 @@ def _build_page(source_file, page_number, page_count, thumbnail, spans, raw_text
     item_type, matched = classify_item_type(f"{title or ''} {raw_text}")
     dimensions = extract_dimensions(raw_text)
     assigned = _assign_dimensions(dimensions, item_type)
+    _apply_labelled_dimensions(raw_text, assigned)
     cutouts = _reject_envelope_cutouts(_detect_cutouts(spans), assigned, warnings)
 
     label = title or f"{Path(source_file).stem} - page {page_number}"

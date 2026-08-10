@@ -143,3 +143,77 @@ def test_parse_files_ignores_unsupported_extensions(tmp_path):
 
     assert result["drawings"] == []
     assert result["skipped"]
+
+
+# --- Labelled dimensions ----------------------------------------------------------------
+#
+# Draughtsmen routinely write one dimension against its own name rather than in an LxH
+# callout ("RECEPTION COUNTER / 3600 x 1100 mm / DEPTH 600 mm"). Reading only the paired
+# callouts discarded it, so a counter whose depth was stated plainly on the sheet still
+# arrived with depth_m = 0 and had to be typed in by hand.
+
+@pytest.mark.parametrize("text, field, expected_m", [
+    ("DEPTH 600 mm", "depth_m", 0.6),
+    ("DEPTH: 600mm", "depth_m", 0.6),
+    ("depth = 600 mm", "depth_m", 0.6),
+    ("HEIGHT 2400 mm", "height_m", 2.4),
+    ("HT 2400", "height_m", 2.4),
+    ("LENGTH 5000 mm", "length_m", 5.0),
+    ("WIDTH 5000 mm", "length_m", 5.0),
+])
+def test_labelled_dimensions_are_read(text, field, expected_m):
+    found = dp.extract_labelled_dimensions(text)
+    assert found[field] == pytest.approx(expected_m)
+
+
+def test_the_trailing_form_is_not_read_but_does_not_break():
+    """"600 DEEP" is a real way to write it and is not supported — the label has to come
+    first. Documented here so the limitation is a known gap rather than a surprise: the
+    dimension is simply left for the PM, which the pricing guard already asks for."""
+    assert dp.extract_labelled_dimensions("600 DEEP") == {}
+
+
+def test_a_labelled_depth_fills_the_gap_a_paired_callout_leaves():
+    assigned = {"length_m": 3.6, "height_m": 1.1, "depth_m": 0.0,
+                "confidence": "medium", "source_text": "3600 x 1100 mm"}
+    filled = dp._apply_labelled_dimensions("3600 x 1100 mm\nDEPTH 600 mm", assigned)
+
+    assert filled == ["depth_m"]
+    assert assigned["depth_m"] == pytest.approx(0.6)
+    assert "labelled depth" in assigned["source_text"]
+
+
+def test_a_measured_dimension_is_never_overwritten_by_a_label():
+    """The paired callout is the stronger signal; labels only fill what is still zero."""
+    assigned = {"length_m": 5.0, "height_m": 2.4, "depth_m": 0.0,
+                "confidence": "medium", "source_text": "5000 x 2400"}
+    dp._apply_labelled_dimensions("5000 x 2400\nHEIGHT 9999 mm", assigned)
+
+    assert assigned["height_m"] == pytest.approx(2.4)
+
+
+def test_board_thickness_is_not_mistaken_for_item_depth():
+    """`THK 18` names the MDF, not how deep the counter is. Treating it as depth would
+    quote a 4 m counter with an 18 mm worktop."""
+    found = dp.extract_labelled_dimensions("MDF THK 18mm\nTHICKNESS 18")
+    assert "depth_m" not in found
+
+
+def test_the_first_mention_of_a_dimension_wins():
+    found = dp.extract_labelled_dimensions("DEPTH 600 mm\nDEPTH 300 mm")
+    assert found["depth_m"] == pytest.approx(0.6)
+
+
+def test_a_counter_stating_its_depth_now_prices_end_to_end():
+    """The whole point: this drawing used to stop at 'Enter Depth'."""
+    import calculators as calc
+
+    assigned = {"length_m": 3.6, "height_m": 1.1, "depth_m": 0.0,
+                "confidence": "medium", "source_text": ""}
+    dp._apply_labelled_dimensions("3600 x 1100 mm\nDEPTH 600 mm", assigned)
+
+    spec = dict(assigned, item_type="counter", label="Reception counter", faces=1, quantity=1)
+    boq = calc.compute_item_boq(spec)
+
+    assert boq["needs_dimensions"] is False
+    assert boq["factory_cost"] > 0

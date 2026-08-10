@@ -29,6 +29,15 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
+      - name: Cache the embedding model
+        # embedder.get_embedder() downloads ~90 MB from HuggingFace when models/ is empty,
+        # and models/ is gitignored, so without this every run on every OS re-fetches it —
+        # which is what turned a 10-second suite into a 14-minute Windows job.
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: onnx-minilm-${{ hashFiles('embedder.py') }}
+
       - name: Install dependencies
         # requirements-dev.txt is deliberately not used: it pulls torch and friends, which
         # exist only to regenerate the ONNX model and would dominate CI time.
