@@ -126,7 +126,7 @@ def test_ocr_status_always_reports_a_backend_field():
 def test_parse_files_reports_unreadable_files_instead_of_raising(tmp_path):
     """One bad file in a batch must not take the whole import down."""
     bogus = tmp_path / "not-a-drawing.pdf"
-    bogus.write_text("this is not a pdf")
+    bogus.write_text("this is not a pdf", encoding="utf-8")
 
     result = dp.parse_files([str(bogus)])
 
@@ -137,7 +137,7 @@ def test_parse_files_reports_unreadable_files_instead_of_raising(tmp_path):
 
 def test_parse_files_ignores_unsupported_extensions(tmp_path):
     doc = tmp_path / "notes.txt"
-    doc.write_text("hello")
+    doc.write_text("hello", encoding="utf-8")
 
     result = dp.parse_files([str(doc)])
 

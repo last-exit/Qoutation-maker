@@ -811,7 +811,9 @@ class QuotationApi:
                 try:
                     out_path = sync_path_obj / f"{base_filename}.{ext}"
                     out_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(str(out_path), "w") as f:
+                    # Binary mode: this only proves the folder is writable and never writes
+                    # a byte, so it has no business picking a text encoding to do it.
+                    with open(str(out_path), "wb"):
                         pass
                     os.remove(str(out_path))
                     return out_path

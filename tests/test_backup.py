@@ -26,7 +26,7 @@ def workspace(tmp_path, monkeypatch):
         conn.commit()
         conn.close()
 
-    (tmp_path / "company.json").write_text(json.dumps({"name": "RED CUBE"}))
+    (tmp_path / "company.json").write_text(json.dumps({"name": "RED CUBE"}), encoding="utf-8")
     images = tmp_path / "images" / "ab"
     images.mkdir(parents=True)
     (images / "photo.jpg").write_bytes(b"\xff\xd8not-really-a-jpeg")
@@ -114,7 +114,7 @@ def test_restore_brings_the_data_back(workspace):
 
     assert (root / "history.db").exists()
     assert (root / "images" / "ab" / "photo.jpg").exists()
-    assert json.loads((root / "company.json").read_text())["name"] == "RED CUBE"
+    assert json.loads((root / "company.json").read_text(encoding="utf-8"))["name"] == "RED CUBE"
 
     conn = sqlite3.connect(str(root / "history.db"))
     try:

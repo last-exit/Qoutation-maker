@@ -21,7 +21,11 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-APP_JS = (ROOT / "app.js").read_text()
+# encoding is explicit because read_text() otherwise uses the locale default, which is
+# cp1252 on Windows — the platform this app actually ships to. app.js contains m², ×, —,
+# curly quotes and •, so the bare call raised UnicodeDecodeError there and took the whole
+# file down at collection time while passing on macOS and Linux.
+APP_JS = (ROOT / "app.js").read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
