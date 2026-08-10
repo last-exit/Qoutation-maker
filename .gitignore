@@ -27,6 +27,12 @@ catalog.db-shm
 jobs.db
 jobs.db-wal
 jobs.db-shm
+# invoices.db was tracked, and this repository is public. It held no rows, so nothing was
+# exposed — but it records what each client was billed and what they have paid, and it only
+# stays empty until the app is actually used.
+invoices.db
+invoices.db-wal
+invoices.db-shm
 # Backup passphrase and destination. The passphrase must never enter version control —
 # it is the only thing standing between the cloud copy and anyone who reaches the folder.
 .backup_key
