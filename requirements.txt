@@ -33,3 +33,10 @@ numpy==2.0.2
 
 # --- Networking ------------------------------------------------------------------------
 requests==2.32.5
+
+# --- Encrypted backup --------------------------------------------------------------------
+# backup.py imports Fernet/PBKDF2HMAC from this, and app.py imports backup at module level,
+# so a missing cryptography does not degrade backups — the app will not start at all. It was
+# absent here while being present in the developer's venv, which is exactly the gap that only
+# shows up on someone else's machine.
+cryptography==50.0.0
