@@ -10,8 +10,8 @@
     "semantic_hash": ""
   },
   "app.py": {
-    "mtime": 1786389605.7375715,
-    "ast_hash": "190e75c47e79a77609e82648ae03007a",
+    "mtime": 1786394264.5750341,
+    "ast_hash": "3c95419b8fa549051ea47d0b59f5e14a",
     "semantic_hash": ""
   },
   "bundles.json": {
@@ -75,8 +75,8 @@
     "semantic_hash": ""
   },
   "requirements.txt": {
-    "mtime": 1786315084.9789689,
-    "ast_hash": "4662c7fc54e9b11e7791611ece1ef74b",
+    "mtime": 1786391002.538262,
+    "ast_hash": "c907f4012eefe9c6889c73de7640dd37",
     "semantic_hash": ""
   },
   "assets/red_cube_logo.png": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "embedder.py": {
-    "mtime": 1786315084.9752228,
-    "ast_hash": "2e87d10589c192c01cb774964a4acd3e",
+    "mtime": 1786395251.1333997,
+    "ast_hash": "9e0ef7bef8c9b1cb43643d75baf21f9b",
     "semantic_hash": ""
   },
   "image_store.py": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "design_parser.py": {
-    "mtime": 1786317062.341981,
-    "ast_hash": "c60c2771eb6ac6949c43d603509280a6",
+    "mtime": 1786394997.8572705,
+    "ast_hash": "014780d2c8882a19751f1e9c0228166a",
     "semantic_hash": ""
   },
   "estimator_config.json": {
@@ -245,8 +245,8 @@
     "semantic_hash": ""
   },
   "tests/test_backup.py": {
-    "mtime": 1786315084.9796906,
-    "ast_hash": "81021a1fcb7a5780f6c102b1d177c998",
+    "mtime": 1786394235.8140457,
+    "ast_hash": "15074c0c2756c410f9e41e16b759ded8",
     "semantic_hash": ""
   },
   "tests/test_invoices_db.py": {
@@ -260,8 +260,8 @@
     "semantic_hash": ""
   },
   "tests/test_js_api_contract.py": {
-    "mtime": 1786315084.9808083,
-    "ast_hash": "bf68f5ae40db3f23ab84de83d67f57bd",
+    "mtime": 1786394227.1643603,
+    "ast_hash": "9aea739d15d92d1c48e0d54479ec3436",
     "semantic_hash": ""
   },
   "DESIGN.md": {
@@ -275,8 +275,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786315220.4990735,
-    "ast_hash": "2e3a8035c8179554d5d36304e63cab4e",
+    "mtime": 1786390076.507816,
+    "ast_hash": "702ec8126a3a987fb0b01950ac79b612",
     "semantic_hash": ""
   },
   "docs/superpowers/specs/2026-08-10-invoices-ui-design.md": {
@@ -290,8 +290,8 @@
     "semantic_hash": ""
   },
   "tests/test_design_parser.py": {
-    "mtime": 1786389447.2451973,
-    "ast_hash": "38b90ca20b1d2ff9358223b7167ae58f",
+    "mtime": 1786395030.1703124,
+    "ast_hash": "367c023802f38d5b5a5718a0fad2dae3",
     "semantic_hash": ""
   },
   "tests/test_doc_generation.py": {
@@ -305,8 +305,8 @@
     "semantic_hash": ""
   },
   ".github/workflows/tests.yml": {
-    "mtime": 1786389764.2143376,
-    "ast_hash": "5a711065242c9625523df8286428ed73",
+    "mtime": 1786395141.1173766,
+    "ast_hash": "7eda3a88a1704b5d61957b409f2eca59",
     "semantic_hash": ""
   }
 }

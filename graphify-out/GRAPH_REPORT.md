@@ -1,16 +1,16 @@
-# Graph Report - Qoutation-maker  (2026-08-10)
+# Graph Report - Qoutation-maker  (2026-08-11)
 
 ## Corpus Check
-- 57 files · ~74,031 words
+- 57 files · ~75,234 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1295 nodes · 2229 edges · 71 communities (47 shown, 24 thin omitted)
+- 1311 nodes · 2257 edges · 70 communities (46 shown, 24 thin omitted)
 - Extraction: 98% EXTRACTED · 2% INFERRED · 0% AMBIGUOUS · INFERRED: 51 edges (avg confidence: 0.7)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5fcc091e`
+- Built from commit: `86350a08`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,7 +32,7 @@
 - Invoices UI — Design Spec
 - test_end_to_end.py
 - test_doc_generation.py
-- maintenance.py
+- parse_files
 - .save_correction
 - generate_excel_dynamic
 - test_history_db.py
@@ -42,17 +42,17 @@
 - run.sh
 - test_catalog_db.py
 - test_crossfill.py
-- embedder.py
+- app.py
 - test_corrections.py
 - syncFolder
 - .index_files
-- app.py
+- design_parser.py
 - ._live_image_refs
 - export_onnx.py
 - test_invoices_db.py
 - test_jobs_db.py
 - jobs_db.py
-- design_parser.py
+- test_design_parser.py
 - Design System: Red Cube Smart Quotation Engine
 - test_js_api_contract.py
 - invoices_db.py
@@ -60,12 +60,11 @@
 - test_rate_card.py
 - _insert_excel_logo
 - Product
-- logging_setup.py
-- openModal
+- extract_labelled_dimensions
+- _apply_labelled_dimensions
 - renderHistoryTable
-- migrate_images.py
+- classify_item_type
 - Red Cube Smart Quotation Engine
-- pdf_export.py
 - .create_job
 - .generate_invoice_document
 - .merge_designs_to_proposal
@@ -119,11 +118,11 @@
 - **Semantic Search / Smart Matcher subsystem** — app_searchmatcher, requirements_chromadb, requirements_sentence_transformers [INFERRED 0.85]
 - **Google Drive Historical Data Sync Pipeline** — app_syncfolder, requirements_google_api_python_client, requirements_google_auth_oauthlib, requirements_google_auth_httplib2, requirements_pymupdf, requirements_datefinder [INFERRED 0.75]
 
-## Communities (71 total, 24 thin omitted)
+## Communities (70 total, 24 thin omitted)
 
 ### Community 0 - "parsing.py"
-Cohesion: 0.06
-Nodes (52): Extracts image data from an openpyxl drawing and stores it. Returns a ref or ""., Stores bytes pulled straight out of a document part (docx/pdf). Returns a ref…, store_embedded_image(), store_raw_bytes(), assign_images_to_rows(), _build_item(), _cell_image_ref(), classify_columns() (+44 more)
+Cohesion: 0.05
+Nodes (61): fetch_image_from_url(), fetch_image_suggestions(), import_local_file(), Image helpers: embedded-image extraction, best-effort online image search,…, Uniform shape for the JS API: a ref for storage, a URL for rendering., Extracts image data from an openpyxl drawing and stores it. Returns a ref or ""., Stores bytes pulled straight out of a document part (docx/pdf). Returns a ref…, Downloads an arbitrary image URL and stores it. Best-effort. (+53 more)
 
 ### Community 1 - "doc_generator.py"
 Cohesion: 0.14
@@ -135,7 +134,7 @@ Nodes (38): addJobCost(), api(), applyBulkVenue(), applyCompanyBranding(), bootB
 
 ### Community 3 - "app.js"
 Cohesion: 0.05
-Nodes (48): adjustRate(), applyCatalogFilter(), catalogCache, closeCatalogItemModal(), closeClientLedgerModal(), closeModal(), closeSettingsModal(), closeSuccessModal() (+40 more)
+Nodes (56): adjustRate(), applyCatalogFilter(), catalogCache, closeCatalogItemModal(), closeClientLedgerModal(), closeModal(), closeSettingsModal(), closeSuccessModal() (+48 more)
 
 ### Community 5 - "history_db.py"
 Cohesion: 0.07
@@ -154,8 +153,8 @@ Cohesion: 0.14
 Nodes (13): Design Health Score — 23/40 (Acceptable), Design Specificity Verdict, False Positives (discarded), Minor Observations, [P0] "Generate Quotation" has no guard rail before a client-facing document, [P0] The Annual Markup is a no-op for 76% of the catalogue — while claiming otherwise, [P0] The application is not operable by keyboard, [P1] Closed modals stay in the tab order, exposing a destructive action (+5 more)
 
 ### Community 9 - "image_store.py"
-Cohesion: 0.13
-Nodes (24): collect_orphans(), _ensure_dir(), exists(), ingest(), is_data_uri(), is_ref(), _normalize(), path_for() (+16 more)
+Cohesion: 0.08
+Nodes (44): collect_orphans(), _ensure_dir(), exists(), ingest(), is_data_uri(), is_ref(), _normalize(), path_for() (+36 more)
 
 ### Community 10 - "catalog_db.py"
 Cohesion: 0.07
@@ -171,7 +170,7 @@ Nodes (8): _distance_to_similarity(), _elapsed_years(), Saves a photo under a de
 
 ### Community 13 - "create"
 Cohesion: 0.07
-Nodes (54): _build_staging(), create(), _decrypt_to(), default_destination(), _derive_key(), ensure_passphrase(), find_cloud_folders(), generate_passphrase() (+46 more)
+Nodes (55): _build_staging(), create(), _decrypt_to(), default_destination(), _derive_key(), ensure_passphrase(), find_cloud_folders(), generate_passphrase() (+47 more)
 
 ### Community 14 - "Invoices UI — Design Spec"
 Cohesion: 0.18
@@ -185,9 +184,9 @@ Nodes (24): api(), archive_with_photo(), fixture, Full pipeline against the real
 Cohesion: 0.13
 Nodes (13): End-to-end generation of the client-facing quotation documents.…, python-docx defaults to Letter, which is the wrong paper for a UAE business and…, The PM can save a draft before adding lines; that must not raise., One install serves one company; if this ever comes back empty the masthead and…, A dropped row is worse than a wrong total: it is invisible on the client's copy…, test_an_empty_quotation_still_produces_a_document(), test_company_branding_is_loaded_from_config(), test_every_line_item_reaches_the_excel_sheet() (+5 more)
 
-### Community 17 - "maintenance.py"
-Cohesion: 0.23
-Nodes (13): stats(), backup_all(), collect_image_orphans(), compact_chroma(), delete_orphans(), Housekeeping the app has to do for itself, because nobody administers a desktop…, Full housekeeping pass. Returns a summary the UI can show verbatim., Snapshots every database. Called before anything destructive. (+5 more)
+### Community 17 - "parse_files"
+Cohesion: 0.14
+Nodes (17): ocr_status(), parse_files(), _parse_pdf(), _parse_raster(), Reports which OCR backend is available, if any. Neither easyocr nor pytesseract…, OCR at native resolution — deliberately no downsampling, since dimension text…, One entry per page of a (possibly 25-page) drawing deck., A single-page entry for a PNG/JPG drawing, OCR'd when a backend is available. (+9 more)
 
 ### Community 18 - ".save_correction"
 Cohesion: 0.33
@@ -217,9 +216,9 @@ Nodes (9): The catalog: uniqueness, and a lookup that can actually match a real 
 Cohesion: 0.25
 Nodes (15): make_items(), Photo cross-fill: borrowing a picture from the nearest photographed twin.…, This is how "Delivery" ended up showing a photo lifted from a furniture…, The batched matmul must keep rows and columns aligned — a transpose slip here…, Silently borrowing against misaligned vectors would attach arbitrary photos., Accelerate's BLAS raises spurious FP-status warnings; they must not reach the…, test_borrows_from_the_nearest_photographed_item(), test_distant_items_are_left_without_a_photo() (+7 more)
 
-### Community 27 - "embedder.py"
-Cohesion: 0.15
-Nodes (12): download_model(), get_embedder(), _mean_pool(), onnx_available(), OnnxEmbedder, Sentence embeddings, with a runtime that does not require PyTorch. `sentence-…, The original backend, kept for dev checkouts that have not exported the ONNX…, Fetches the ONNX model and tokenizer. Returns True once both are in place. (+4 more)
+### Community 27 - "app.py"
+Cohesion: 0.06
+Nodes (37): _bind_estimator_dropzone(), crossfill_images(), _handle_estimator_drop(), _is_generic_service(), _load_sync_config(), main(), True when a line prices a service, so borrowing a product photo for it is…, Native counterpart to the JS drop handler on #est-dropzone. The browser's File… (+29 more)
 
 ### Community 28 - "test_corrections.py"
 Cohesion: 0.19
@@ -233,9 +232,9 @@ Nodes (17): changeMarkup(), compileQuote(), preflightWarnings(), searchMatcher()
 Cohesion: 0.29
 Nodes (4): _item_id(), Stable identity for an indexed item: a hash of what it *is*. IDs used to be…, Loads a freshly parsed index into a scratch collection, leaving the live one…, Swaps the staged index in for the live one, once it is known to be complete.…
 
-### Community 31 - "app.py"
-Cohesion: 0.25
-Nodes (10): _bind_estimator_dropzone(), crossfill_images(), _handle_estimator_drop(), _is_generic_service(), _load_sync_config(), main(), True when a line prices a service, so borrowing a product photo for it is…, Native counterpart to the JS drop handler on #est-dropzone. The browser's File… (+2 more)
+### Community 31 - "design_parser.py"
+Cohesion: 0.23
+Nodes (11): _assign_dimensions(), _build_page(), _detect_cutouts(), _pick_title(), Multi-file, multi-page intake for design drawings feeding the Automated Design…, Finds openings called out on the drawing (windows, niches, TV recesses). Only…, The drawing's own name for the thing, taken as the largest non-boilerplate text., Turns a page's dimension list into length/height/depth in metres. Preference… (+3 more)
 
 ### Community 34 - "test_invoices_db.py"
 Cohesion: 0.09
@@ -249,9 +248,9 @@ Nodes (17): jobs(), fixture, Jobs, costs and suppliers — the money side of wha
 Cohesion: 0.10
 Nodes (33): add_job_cost(), allocate_job_number(), _connect(), cost_breakdown(), create_job(), delete_job(), delete_job_cost(), delete_supplier() (+25 more)
 
-### Community 37 - "design_parser.py"
-Cohesion: 0.05
-Nodes (60): _assign_dimensions(), _build_page(), classify_item_type(), _detect_cutouts(), extract_dimensions(), _infer_bare_unit(), ocr_status(), parse_files() (+52 more)
+### Community 37 - "test_design_parser.py"
+Cohesion: 0.18
+Nodes (16): extract_dimensions(), Pulls every dimension-looking token out of a blob of drawing text. Returns a…, meters_for(), parametrize, Drawing text -> dimensions. This is where a wrong answer is most expensive and…, The PM has to be able to tell a measured value from an assumed one., European-style CAD exports write 2,4m for 2.4m — reading it as 24 would be a…, test_a_page_with_no_dimensions_returns_nothing_rather_than_guessing() (+8 more)
 
 ### Community 38 - "Design System: Red Cube Smart Quotation Engine"
 Cohesion: 0.08
@@ -259,7 +258,7 @@ Nodes (25): Buttons, Cards (stat cards, match cards, draft items, job cards), Co
 
 ### Community 39 - "test_js_api_contract.py"
 Cohesion: 0.09
-Nodes (20): api(), api_class(), called_methods(), fixture, parametrize, Contract tests between app.js and QuotationApi. These exist because a green…, Cloning a past quote back into the draft needs the lines and their photo URLs., The match cards render <img src="${m.image_src}">. (+12 more)
+Nodes (20): api(), api_class(), called_methods(), fixture, parametrize, Contract tests between app.js and QuotationApi. These exist because a green…, Pins the fix. Shipping every line item for a 300-row list was the expensive…, Cloning a past quote back into the draft needs the lines and their photo URLs. (+12 more)
 
 ### Community 40 - "invoices_db.py"
 Cohesion: 0.06
@@ -267,11 +266,11 @@ Nodes (53): backup(), connect(), integrity_check(), list_backups(), migrate(), p
 
 ### Community 41 - "compute_item_boq"
 Cohesion: 0.06
-Nodes (54): aggregate(), _arch_surfaces(), compute_item_boq(), _counter_surfaces(), dimension_message(), _line(), missing_required_dims(), net_surface_area() (+46 more)
+Nodes (56): aggregate(), _arch_surfaces(), compute_item_boq(), _counter_surfaces(), dimension_message(), _line(), missing_required_dims(), net_surface_area() (+48 more)
 
 ### Community 42 - "test_rate_card.py"
 Cohesion: 0.06
-Nodes (49): options_payload(), Everything the UI needs to render its override dropdowns, sourced from the card., KeyError, add_rate_card_item(), _build_column_map(), get_rate_card(), load_labor_config(), load_rate_card() (+41 more)
+Nodes (47): KeyError, add_rate_card_item(), _build_column_map(), get_rate_card(), load_labor_config(), load_rate_card(), MissingRateError, _normalize_header() (+39 more)
 
 ### Community 43 - "_insert_excel_logo"
 Cohesion: 0.22
@@ -281,29 +280,25 @@ Nodes (9): create_fallback_template(), _insert_excel_logo(), _load_logo_scaled()
 Cohesion: 0.15
 Nodes (12): Accessibility & Inclusion, Brand Commitments, Capabilities and Constraints, Design Direction (standing preference), Evidence on Hand, Operating Context, Platform, Positioning (+4 more)
 
-### Community 45 - "logging_setup.py"
-Cohesion: 0.31
-Nodes (8): collect_diagnostics(), get_logger(), File logging for a desktop app whose console nobody ever sees. Failures used to…, Logs an exception with its traceback and returns the JS API's error envelope.…, Installs a rotating file handler plus console output. Safe to call more than…, Bundles the logs and environment into one file the PM can send on. The log…, report(), setup()
+### Community 45 - "extract_labelled_dimensions"
+Cohesion: 0.18
+Nodes (11): extract_labelled_dimensions(), _infer_bare_unit(), Guesses the unit of a dimension written without one. Drawing convention in this…, Named dimensions found in the drawing text, as {field: metres}. Later mentions…, Normalizes a magnitude + unit to metres., _to_meters(), 600 DEEP" is a real way to write it and is not supported — the label has to…, `THK 18` names the MDF, not how deep the counter is. Treating it as depth would… (+3 more)
 
-### Community 46 - "openModal"
+### Community 46 - "_apply_labelled_dimensions"
 Cohesion: 0.29
-Nodes (8): editJob(), fillJobForm(), openCatalogItemModal(), openImagePicker(), openModal(), openNewJob(), switchImagePickerTab(), trapFocus()
+Nodes (7): _apply_labelled_dimensions(), Fills gaps in `assigned` from named callouts, without overriding what was…, The paired callout is the stronger signal; labels only fill what is still zero., The whole point: this drawing used to stop at 'Enter Depth'., test_a_counter_stating_its_depth_now_prices_end_to_end(), test_a_labelled_depth_fills_the_gap_a_paired_callout_leaves(), test_a_measured_dimension_is_never_overwritten_by_a_label()
 
 ### Community 47 - "renderHistoryTable"
 Cohesion: 0.36
 Nodes (8): applyHistoryFilters(), filterHistory(), loadHistory(), paymentCellHtml(), renderHistoryTable(), setHistoryStatusFilter(), statusPillHtml(), updatePayment()
 
-### Community 48 - "migrate_images.py"
-Cohesion: 0.29
-Nodes (7): Accepts `data:image/...;base64,xxx` or a bare base64 payload., store_data_uri(), migrate_chroma(), migrate_history(), One-time migration of inline base64 photos into the content-addressed image…, Rewrites embedding_metadata rows keyed 'image_base64' to 'image_ref'., Rewrites items_json in every saved quotation to carry refs.
+### Community 48 - "classify_item_type"
+Cohesion: 0.50
+Nodes (4): classify_item_type(), Maps drawing text to one of the estimator's item types. Returns (type,…, `matched` is what tells the UI the type was defaulted rather than read, so the…, test_an_unrecognised_title_falls_back_to_wall_and_reports_no_match()
 
 ### Community 49 - "Red Cube Smart Quotation Engine"
 Cohesion: 0.29
 Nodes (6): Knowledge graph (graphify), Optional: OCR for raster drawings (PNG/JPG dimension detection), Project structure, Red Cube Smart Quotation Engine, Running the app, Setup
-
-### Community 50 - "pdf_export.py"
-Cohesion: 0.25
-Nodes (7): convert_to_pdf(), open_file(), pdf_available(), PDF export via MS Office COM automation (win32com), with graceful offline-safe…, Opens a file with the OS default handler (e.g. default PDF viewer)., Converts an xlsx/docx file to PDF using the installed MS Office application via…, Whether this machine can turn a document into a PDF. Checked so the app can say…
 
 ### Community 54 - "compute_valid_until"
 Cohesion: 0.40
@@ -317,16 +312,16 @@ Nodes (5): compute_valid_until(), Returns quote_date + validity_days as YYYY-MM-
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `QuotationApi` connect `QuotationApi` to `._get_model`, `.save_correction`, `.index_files`, `app.py`, `._live_image_refs`, `.create_job`, `.generate_invoice_document`, `.merge_designs_to_proposal`, `.get_storage_report`, `.export_diagnostics`, `.add_rate_card_item`, `.compute_design_estimate`, `.create_invoice_from_quotation`, `.get_estimator_options`, `.get_install_health`, `.get_review_queue`, `.get_vat_summary`, `.list_corrections`, `.merge_clients`, `.open_source_file`, `.parse_design_files`, `.pick_design_files`, `.restore_backup`, `.run_backup`?**
-  _High betweenness centrality (0.116) - this node is a cross-community bridge._
+- **Why does `QuotationApi` connect `QuotationApi` to `._get_model`, `.save_correction`, `app.py`, `.index_files`, `._live_image_refs`, `.create_job`, `.generate_invoice_document`, `.merge_designs_to_proposal`, `.get_storage_report`, `.export_diagnostics`, `.add_rate_card_item`, `.compute_design_estimate`, `.create_invoice_from_quotation`, `.get_estimator_options`, `.get_install_health`, `.get_review_queue`, `.get_vat_summary`, `.list_corrections`, `.merge_clients`, `.open_source_file`, `.parse_design_files`, `.pick_design_files`, `.restore_backup`, `.run_backup`?**
+  _High betweenness centrality (0.118) - this node is a cross-community bridge._
 - **Why does `png_bytes()` connect `test_image_store.py` to `catalog_db.py`, `test_invoices_db.py`?**
-  _High betweenness centrality (0.038) - this node is a cross-community bridge._
+  _High betweenness centrality (0.063) - this node is a cross-community bridge._
 - **Why does `make()` connect `test_invoices_db.py` to `test_image_store.py`?**
-  _High betweenness centrality (0.018) - this node is a cross-community bridge._
+  _High betweenness centrality (0.038) - this node is a cross-community bridge._
 - **What connects `ICONS`, `draftItems`, `historyCache` to the rest of the system?**
   _76 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `parsing.py` be split into smaller, more focused modules?**
-  _Cohesion score 0.061683599419448475 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.05069124423963134 - nodes in this community are weakly interconnected._
 - **Should `doc_generator.py` be split into smaller, more focused modules?**
   _Cohesion score 0.1422924901185771 - nodes in this community are weakly interconnected._
 - **Should `api` be split into smaller, more focused modules?**
