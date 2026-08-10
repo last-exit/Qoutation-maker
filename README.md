@@ -18,9 +18,9 @@ pip install -r requirements.txt   # if present, otherwise see imports in app.py
 
 ### Optional: OCR for raster drawings (PNG/JPG dimension detection)
 
-Vector PDF drawings parse dimensions exactly from the embedded text layer — no OCR needed. Raster drawings (PNG/JPG screenshots, e.g. SketchUp exports) need OCR to read dimension labels off the image. Without an OCR backend installed, [`design_parser.ocr_status()`](design_parser.py:327) reports unavailable and all dimensions on raster pages come back as `0`, so estimator items price at `0.00`.
+Vector PDF drawings parse dimensions exactly from the embedded text layer — no OCR needed. Raster drawings (PNG/JPG screenshots, e.g. SketchUp exports) need OCR to read dimension labels off the image. Without an OCR backend installed, [`design_parser.ocr_status()`](design_parser.py:327) reports unavailable and dimensions on raster pages come back as `0`. Those items are then held back rather than priced — [`calculators.compute_item_boq`](calculators.py:386) refuses to quote an item missing any of its `REQUIRED_DIMS` and asks for the value instead, so a missing OCR backend costs the PM typing, not a wrong number on a client quotation.
 
-To enable it, install one of, **into this project's `venv`** (the app runs on `venv\Scripts\python.exe`, not the system Python — installing to the wrong interpreter is a common gotcha):
+To enable it, install one of, **into this project's `venv`** (the app runs on the venv's interpreter, not the system Python — installing to the wrong interpreter is a common gotcha):
 
 ```bash
 # Recommended: lightweight, needs the Tesseract binary too
@@ -29,6 +29,13 @@ winget install --id UB-Mannheim.TesseractOCR -e   # Windows; adds tesseract.exe
 
 # Alternative: heavier (~2GB, pulls in torch), no separate binary needed
 venv\Scripts\python.exe -m pip install easyocr
+```
+
+On macOS the equivalent is:
+
+```bash
+venv/bin/python -m pip install pytesseract
+brew install tesseract          # adds /opt/homebrew/bin/tesseract
 ```
 
 The Tesseract installer adds `C:\Program Files\Tesseract-OCR` to PATH, but only for *new* shells/processes started after install — an already-open terminal or already-running app won't see it. After installing, **close any open terminal, open a fresh one, and restart the app** (`python app.py`) so both the new PATH and the new package are picked up. Verify with:
