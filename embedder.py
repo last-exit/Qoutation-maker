@@ -144,9 +144,18 @@ def download_model(progress=None):
         try:
             urllib.request.urlretrieve(url, temp)
             temp.replace(destination)
-        except Exception:
+        except Exception as exc:
             temp.unlink(missing_ok=True)
-            raise
+            # Whatever went wrong here surfaces to a PM in the middle of quoting, and
+            # "[Errno 30] Read-only file system" or a bare URLError tells them nothing they
+            # can act on. Name the one-time download and what to do about it; the original
+            # exception still reaches the log through logging_setup.report.
+            raise RuntimeError(
+                "Search needs a one-time download of the matching model (about 90 MB) and "
+                "it could not be fetched. Connect to the internet and try again — "
+                "quotations, the estimator and everything else keep working offline. "
+                f"({type(exc).__name__}: {exc})"
+            ) from exc
 
     model_size = ONNX_MODEL.stat().st_size if ONNX_MODEL.exists() else 0
     if model_size < MIN_MODEL_BYTES:
