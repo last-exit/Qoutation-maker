@@ -199,7 +199,18 @@ def test_status_after_a_backup(workspace):
     assert state["age_hours"] < 1
 
 
-def test_default_destination_is_a_synced_folder_when_one_exists(workspace):
+def test_default_destination_is_a_synced_folder_when_one_exists(workspace, tmp_path, monkeypatch):
+    """Creates the synced folder instead of reading the real home directory.
+
+    This previously asserted, in effect, that whoever ran the suite had Google Drive
+    installed — true on the developer's laptop and false on every CI runner, so it passed
+    for a year and then failed the moment it ran anywhere else. The sibling test below
+    already patched `home` for the negative case; this is the same treatment.
+    """
+    home = tmp_path / "fake_home"
+    (home / "Library/CloudStorage/GoogleDrive-me@example.com/My Drive").mkdir(parents=True)
+    monkeypatch.setattr(backup.Path, "home", staticmethod(lambda: home))
+
     assert "RedCubeBackups" in backup.default_destination()
 
 
