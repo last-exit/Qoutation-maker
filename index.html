@@ -380,6 +380,16 @@
         <span class="icon icon-sm" id="sync-spinner" data-icon="refresh"></span><span>Sync &amp; Build Index</span>
       </button>
       <div id="index-feedback" class="hidden"></div>
+
+      <div class="settings-divider"></div>
+      <label class="field-label">Something went wrong?</label>
+      <p class="settings-hint">
+        Saves a diagnostics file to your Desktop with the app's recent activity log — no client
+        data. Send it on so the problem can be traced.
+      </p>
+      <button class="btn btn-ghost btn-block" onclick="exportDiagnostics()">
+        <span class="icon icon-sm" data-icon="alert"></span><span>Save Diagnostics File</span>
+      </button>
     </div>
   </div>
 </div>

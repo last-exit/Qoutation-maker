@@ -5,13 +5,13 @@
     "semantic_hash": ""
   },
   "app.js": {
-    "mtime": 1786316804.2039196,
-    "ast_hash": "5651b5c868a1dc0600cdc510bb538323",
+    "mtime": 1786389644.2264483,
+    "ast_hash": "761d0e93f39d49d125a4e783b8d8cc62",
     "semantic_hash": ""
   },
   "app.py": {
-    "mtime": 1786364226.683664,
-    "ast_hash": "9bd8d3bcc558310b661f91b367d75fb3",
+    "mtime": 1786389605.7375715,
+    "ast_hash": "190e75c47e79a77609e82648ae03007a",
     "semantic_hash": ""
   },
   "bundles.json": {
@@ -70,8 +70,8 @@
     "semantic_hash": "725d6505738c73cadd210cdcb6117183"
   },
   "index.html": {
-    "mtime": 1786316808.3284853,
-    "ast_hash": "96059c88765820ea4df869be4a0d4c66",
+    "mtime": 1786389631.4618595,
+    "ast_hash": "62647cd15c3718060a9063038c103758",
     "semantic_hash": ""
   },
   "requirements.txt": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "logging_setup.py": {
-    "mtime": 1786315084.9784124,
-    "ast_hash": "5053902157bed92b999a9dcfe6347cfd",
+    "mtime": 1786389570.9394293,
+    "ast_hash": "5b77aa00807ccfdbe6e7ab9430588e1c",
     "semantic_hash": ""
   },
   "maintenance.py": {
@@ -215,8 +215,8 @@
     "semantic_hash": ""
   },
   "calculators.py": {
-    "mtime": 1786315220.499715,
-    "ast_hash": "ace60071583468db50cb8c8c768c4896",
+    "mtime": 1786389343.1617904,
+    "ast_hash": "7a34fa1a1242a845f92a5024e069cc0a",
     "semantic_hash": ""
   },
   "design_parser.py": {
@@ -282,6 +282,31 @@
   "docs/superpowers/specs/2026-08-10-invoices-ui-design.md": {
     "mtime": 1786363364.5433393,
     "ast_hash": "de79961f847440f385b2015dfc3f9cb4",
+    "semantic_hash": ""
+  },
+  "tests/test_calculators.py": {
+    "mtime": 1786389298.7398756,
+    "ast_hash": "db236234f9eeca7a4ed9e6b395ce56d4",
+    "semantic_hash": ""
+  },
+  "tests/test_design_parser.py": {
+    "mtime": 1786389447.2451973,
+    "ast_hash": "38b90ca20b1d2ff9358223b7167ae58f",
+    "semantic_hash": ""
+  },
+  "tests/test_doc_generation.py": {
+    "mtime": 1786389495.0298831,
+    "ast_hash": "588aa6a47e1943a266d0c7dd7e69fc11",
+    "semantic_hash": ""
+  },
+  "tests/test_rate_card.py": {
+    "mtime": 1786389379.9097545,
+    "ast_hash": "b2259e5960f6357b62ba7569f7565793",
+    "semantic_hash": ""
+  },
+  ".github/workflows/tests.yml": {
+    "mtime": 1786389764.2143376,
+    "ast_hash": "5a711065242c9625523df8286428ed73",
     "semantic_hash": ""
   }
 }

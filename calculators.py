@@ -139,11 +139,17 @@ DEFAULT_ITEM_TYPE = "wall"
 # Sensible fallbacks when a drawing gives a plan dimension but no depth.
 DEFAULT_DEPTH_M = {"wall": 0.20, "counter": 0.60, "stage": 3.00, "arch": 0.30}
 
-# The dimensions each item type needs a real (>0) value for before it has any clad area at
-# all. Depth is deliberately excluded everywhere except stage — depth always has a usable
-# default (DEFAULT_DEPTH_M) once length/height give the item a real face, so a missing depth
-# is a reasonable guess but a missing length or height is not: pricing a 0 m2 face and its
-# framing off a phantom rectangle is the "wrong estimation" failure mode, not a helpful guess.
+# The dimensions each item type needs a real (>0) value for before it can be priced at all.
+# Depth is required for counter and stage, and excluded for wall and arch. The split is not
+# arbitrary: on a wall or an arch, depth is construction thickness, so DEFAULT_DEPTH_M is a
+# fair stand-in that barely moves the number. On a counter it is the worktop and both end
+# panels — roughly 45% of the clad area — and on a stage it is half the deck, so defaulting
+# it (0.60 m and 3.00 m respectively) can understate a real item by a third or more.
+#
+# compute_item_boq enforces this list, not just a zero-area check. Both failure modes have
+# to be caught: an item with no face at all prices at 0.00, but an item missing only its
+# depth still has a face and prices at a confident, plausible, understated figure. The
+# second is the one that reaches a client, because 0.00 gets questioned and 1,092.91 does not.
 REQUIRED_DIMS = {
     "wall": ("length_m", "height_m"),
     "counter": ("length_m", "height_m", "depth_m"),
@@ -356,10 +362,21 @@ def _line(card, code, qty, basis, category=None, override_cost=None):
     }
 
 
+def missing_required_dims(item_type, spec):
+    """The required dimension fields this spec has not supplied a positive value for.
+
+    A missing dimension is not the same as a zero-area item. A counter with a length and a
+    height but no depth still has one clad face, so it prices — at a number that looks
+    entirely reasonable while silently omitting the top and both returns. That is more
+    dangerous than a visible 0.00, because nothing about the figure invites a second look.
+    """
+    required = REQUIRED_DIMS.get(item_type, REQUIRED_DIMS[DEFAULT_ITEM_TYPE])
+    return [f for f in required if float(spec.get(f) or 0.0) <= 0]
+
+
 def dimension_message(item_type, spec):
     """Names the specific fields still needed before an item type has any clad area."""
-    required = REQUIRED_DIMS.get(item_type, REQUIRED_DIMS[DEFAULT_ITEM_TYPE])
-    missing = [_DIM_LABELS[f] for f in required if float(spec.get(f) or 0.0) <= 0]
+    missing = [_DIM_LABELS[f] for f in missing_required_dims(item_type, spec)]
     label = ITEM_TYPES.get(item_type, ITEM_TYPES[DEFAULT_ITEM_TYPE])["label"]
     if not missing:
         return f"Enter dimensions to price this {label}."
@@ -410,7 +427,14 @@ def compute_item_boq(spec, card=None):
     # which reads as a real number but is not one. Stop here and ask for the dimension
     # instead of guessing — the PM enters it in the same fields, this just refuses to
     # fabricate a number until they do.
-    if gross_m2 <= 0:
+    #
+    # The area test alone is not enough. It catches the item that prices at 0.00, but not
+    # the one whose *partial* dimensions still form a face: a counter with no depth, a
+    # stage with no depth, an arch with no height. Those return a confident, plausible,
+    # under-stated figure — the failure mode that actually reaches a client, since a
+    # visible 0.00 gets questioned and AED 1,092.91 does not. REQUIRED_DIMS already states
+    # what each type needs, so hold every item to it.
+    if gross_m2 <= 0 or missing_required_dims(item_type, spec):
         return {
             "label": spec.get("label") or type_meta["label"],
             "item_type": item_type,

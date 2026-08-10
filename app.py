@@ -1513,6 +1513,23 @@ class QuotationApi:
         except Exception as e:
             return logging_setup.report("Checking install health", e)
 
+    # --- Support ------------------------------------------------------------------
+
+    def export_diagnostics(self):
+        """Writes a support bundle to the Desktop and opens it.
+
+        This app runs on one laptop with no telemetry, by design — which also means a crash
+        here is invisible to anyone who could fix it. Rather than send data off the machine,
+        give the user one file they can choose to pass on.
+        """
+        try:
+            result = logging_setup.collect_diagnostics()
+            if result.get("success"):
+                pdf_export.open_file(result["path"])
+            return result
+        except Exception as e:
+            return logging_setup.report("Exporting diagnostics", e)
+
     # --- Backup ------------------------------------------------------------------
     # Everything the business remembers lives in a few files on one laptop. Local snapshots
     # die with the disk they are on, so this puts an encrypted copy in a synced folder.

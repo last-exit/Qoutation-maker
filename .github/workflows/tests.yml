@@ -1,0 +1,47 @@
+name: Tests
+
+# The app ships to one laptop and is used for live client quoting, so the point of this
+# workflow is narrow: never hand over a build whose pricing math has regressed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: pytest (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # windows-latest because that is the platform the app is actually used on;
+        # ubuntu-latest because it is fast and catches path/encoding assumptions that a
+        # single-OS run would miss.
+        os: [ubuntu-latest, windows-latest]
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        # requirements-dev.txt is deliberately not used: it pulls torch and friends, which
+        # exist only to regenerate the ONNX model and would dominate CI time.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pytest==8.4.2
+
+      - name: Check the app imports headlessly
+        # pywebview only loads a GUI toolkit inside webview.start(), so importing the app
+        # must work on a runner with no display. If this ever stops being true, the whole
+        # suite fails confusingly at collection instead of here with an obvious message.
+        run: python -c "import app; print('app imports OK')"
+
+      - name: Run tests
+        run: python -m pytest tests/ -q

@@ -569,6 +569,19 @@ function closeModal(overlayEl) {
 function openSettingsModal() { openModal(document.getElementById('settings-modal-overlay')); }
 function closeSettingsModal() { closeModal(document.getElementById('settings-modal-overlay')); }
 
+// Writes the log bundle to the Desktop and opens it, so reporting a problem is one click
+// rather than "find logs/quotation_engine.log" over the phone.
+function exportDiagnostics() {
+  if (!api()) return;
+  showToast('Collecting diagnostics…', 'info');
+  api().export_diagnostics().then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not save the diagnostics file.', 'error'); return; }
+    showToast('Saved to your Desktop — attach it when reporting the problem.', 'success');
+  }).catch(function (err) {
+    showToast('Could not save the diagnostics file: ' + err, 'error');
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Status / analytics
 // ---------------------------------------------------------------------------
