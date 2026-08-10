@@ -7,6 +7,7 @@ responses carry a 64-character hash. See image_store's docstring for why.
 Every network-touching function here fails soft (returns success: False) so the core
 offline workflow never breaks if there is no internet connection.
 """
+import base64
 import io
 import re
 
@@ -16,6 +17,19 @@ import image_store
 
 _SEARCH_TIMEOUT = 4
 _HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) QuotationEngine/1.0"}
+
+
+def pil_to_base64(image, fmt="PNG"):
+    """Encodes a PIL image as a data: URI.
+
+    Used for the design estimator's page previews, which are per-parse-session and never
+    need a permanent home in image_store's content-addressed disk cache — unlike catalog
+    photos, a drawing thumbnail is discarded the moment the PM clears or re-uploads it.
+    """
+    buffer = io.BytesIO()
+    image.save(buffer, format=fmt)
+    encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+    return f"data:image/{fmt.lower()};base64,{encoded}"
 
 
 def _result_for(ref):

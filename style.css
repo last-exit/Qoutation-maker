@@ -731,9 +731,9 @@ table.data-table tr:hover td { background: var(--bg-hover); }
   gap: 6px; text-align: center; padding: 34px 20px; margin-bottom: 16px; cursor: pointer;
   border: 1.5px dashed var(--border-strong); border-radius: var(--radius-lg);
   background: var(--bg-panel-alt); color: var(--text-secondary); transition: border-color .15s, background .15s; }
-.est-dropzone:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
+.est-dropzone:hover, .est-dropzone-active { border-color: var(--accent); background: var(--accent-soft); color: var(--text-primary); }
 .est-dropzone .icon-lg { color: var(--text-muted); }
-.est-dropzone:hover .icon-lg { color: var(--accent); }
+.est-dropzone:hover .icon-lg, .est-dropzone-active .icon-lg { color: var(--accent); }
 .est-dropzone-title { margin: 0; font-size: 13px; font-weight: 800; color: var(--text-primary); }
 .est-dropzone-sub { margin: 0; font-size: 11px; line-height: 1.55; max-width: 460px; color: var(--text-muted); }
 /* Once drawings are loaded the zone stops competing with them for attention. */

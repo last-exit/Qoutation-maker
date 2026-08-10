@@ -9,6 +9,7 @@ from pathlib import Path
 import numpy as np
 import chromadb
 import webview
+from webview.dom import DOMEventHandler
 
 import backup
 import db
@@ -1775,7 +1776,9 @@ class QuotationApi:
         except Exception as e:
             return logging_setup.report("Creating the job", e)
 
-    def update_job(self, job_id, **fields):
+    def update_job(self, job_id, fields):
+        # pywebview's JS bridge marshals a JS object as a single positional dict, not
+        # keyword arguments — a **fields signature here would reject every call from app.js.
         try:
             jobs_db.update_job(job_id, **fields)
             return {"success": True}
@@ -1803,7 +1806,8 @@ class QuotationApi:
         except Exception as e:
             return logging_setup.report("Adding that cost", e)
 
-    def update_job_cost(self, cost_id, **fields):
+    def update_job_cost(self, cost_id, fields):
+        # Same bridge constraint as update_job above: the JS caller sends one dict argument.
         try:
             jobs_db.update_job_cost(cost_id, **fields)
             return {"success": True}
@@ -1898,10 +1902,36 @@ class QuotationApi:
             return {"success": False, "error": str(e)}
 
 
+def _handle_estimator_drop(window, event):
+    """Native counterpart to the JS drop handler on #est-dropzone.
+
+    The browser's File API never exposes a real filesystem path for a dropped file — only
+    pywebview's own DOM event bridge can, and only for elements it has a registered 'drop'
+    listener on (see _bind_estimator_dropzone). Without this, dropping a file onto the
+    estimator does nothing: app.js's ondrop only stops the browser from navigating away.
+    """
+    files = ((event or {}).get("dataTransfer") or {}).get("files") or []
+    paths = [f["pywebviewFullPath"] for f in files if f.get("pywebviewFullPath")]
+    if not paths:
+        window.evaluate_js(
+            "showToast('Could not read the dropped file path — use Upload Drawings instead.', 'error')"
+        )
+        return
+    window.evaluate_js(f"ingestDesignPaths({json.dumps(paths)})")
+
+
+def _bind_estimator_dropzone(window):
+    element = window.dom.get_element("#est-dropzone")
+    if element:
+        element.events.drop += DOMEventHandler(
+            lambda event: _handle_estimator_drop(window, event), prevent_default=True
+        )
+
+
 def main():
     api = QuotationApi()
     company_name = doc_generator.COMPANY.get("name", "Company")
-    webview.create_window(
+    window = webview.create_window(
         f'{company_name.title()} Smart Quotation Engine',
         'index.html',
         js_api=api,
@@ -1910,6 +1940,7 @@ def main():
         resizable=True,
         background_color='#0a0a0b'
     )
+    window.events.loaded += lambda: _bind_estimator_dropzone(window)
     # Devtools are opt-in via QE_DEBUG=1 rather than always on: a shipped build should not
     # hand end users an inspector over the app's own data.
     debug = os.environ.get("QE_DEBUG", "").lower() in ("1", "true", "yes")

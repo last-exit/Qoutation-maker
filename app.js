@@ -2101,43 +2101,76 @@ function pickDesignFiles() {
       if (res.error && res.error !== 'No files selected.') showToast(res.error, 'error');
       return;
     }
-    const loading = document.getElementById('est-loading');
-    loading.classList.remove('hidden');
-    loading.innerHTML = skeletonCards(Math.min(res.paths.length, 3));
-
-    return api().parse_design_files(res.paths).then(function (parsed) {
-      loading.classList.add('hidden');
-      loading.innerHTML = '';
-
-      if (!parsed.success) { showToast(parsed.error || 'Could not read those files.', 'error'); return; }
-      if (!parsed.drawings.length) { showToast('No readable drawing pages found.', 'warning'); return; }
-
-      parsed.drawings.forEach(function (page) {
-        estimatorPages.push(page);
-        // The detected values seed the editable spec; from here the PM owns them.
-        estimatorSpecs.push(Object.assign({}, page.detected, {
-          substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
-          cutouts: (page.detected.cutouts || []).map(c => Object.assign({}, c)),
-          rate_overrides: {}, labor_rate_overrides: {},
-          source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
-        }));
-      });
-
-      (parsed.skipped || []).forEach(s => showToast(`${s.file}: ${s.reason}`, 'warning'));
-      if ((parsed.warnings || []).length) {
-        showEstimatorNotice(parsed.warnings.join('  •  '), 'warning');
-      }
-
-      document.getElementById('est-dropzone').classList.add('est-dropzone-compact');
-      document.getElementById('est-clear-btn').style.display = '';
-      renderEstimatorPages();
-      recalcEstimate();
-      showToast(`${parsed.drawings.length} drawing page(s) parsed.`, 'success');
-    });
+    return ingestDesignPaths(res.paths);
   }).catch(function (err) {
-    document.getElementById('est-loading').classList.add('hidden');
     showToast('Drawing import failed: ' + err, 'error');
   });
+}
+
+// Shared by the click-to-upload picker and the native OS drag-and-drop handler that
+// app.py wires up via pywebview's DOM API (see _bind_estimator_dropzone) — both end up
+// with a list of real filesystem paths and hand them here.
+function ingestDesignPaths(paths) {
+  if (!api() || !paths || !paths.length) return;
+
+  const loading = document.getElementById('est-loading');
+  loading.classList.remove('hidden');
+  loading.innerHTML = skeletonCards(Math.min(paths.length, 3));
+
+  return api().parse_design_files(paths).then(function (parsed) {
+    loading.classList.add('hidden');
+    loading.innerHTML = '';
+
+    if (!parsed.success) { showToast(parsed.error || 'Could not read those files.', 'error'); return; }
+    if (!parsed.drawings.length) { showToast('No readable drawing pages found.', 'warning'); return; }
+
+    parsed.drawings.forEach(function (page) {
+      estimatorPages.push(page);
+      // The detected values seed the editable spec; from here the PM owns them.
+      estimatorSpecs.push(Object.assign({}, page.detected, {
+        substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
+        cutouts: (page.detected.cutouts || []).map(c => Object.assign({}, c)),
+        rate_overrides: {}, labor_rate_overrides: {},
+        source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
+      }));
+    });
+
+    (parsed.skipped || []).forEach(s => showToast(`${s.file}: ${s.reason}`, 'warning'));
+    if ((parsed.warnings || []).length) {
+      showEstimatorNotice(parsed.warnings.join('  •  '), 'warning');
+    }
+
+    document.getElementById('est-dropzone').classList.add('est-dropzone-compact');
+    document.getElementById('est-clear-btn').style.display = '';
+    renderEstimatorPages();
+    recalcEstimate();
+    showToast(`${parsed.drawings.length} drawing page(s) parsed.`, 'success');
+  }).catch(function (err) {
+    loading.classList.add('hidden');
+    showToast('Drawing import failed: ' + err, 'error');
+  });
+}
+
+// dragover's default action rejects a drop outright, so without preventDefault here the
+// 'drop' event never fires at all — a dropped file silently does nothing, which is the
+// dropzone's actual failure mode until this handler exists.
+function handleEstDragOver(event) {
+  event.preventDefault();
+  document.getElementById('est-dropzone').classList.add('est-dropzone-active');
+}
+
+function handleEstDragLeave(event) {
+  event.preventDefault();
+  document.getElementById('est-dropzone').classList.remove('est-dropzone-active');
+}
+
+// The actual drop is handled natively via pywebview's DOM event bridge (app.py), which is
+// the only path that can resolve a dropped file back to a real filesystem path. This JS
+// 'drop' listener only exists to stop the browser's default action (navigating to/opening
+// the dropped file) and to clear the hover state.
+function handleEstDrop(event) {
+  event.preventDefault();
+  document.getElementById('est-dropzone').classList.remove('est-dropzone-active');
 }
 
 function clearEstimator() {

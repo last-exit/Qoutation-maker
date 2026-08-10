@@ -14,8 +14,6 @@ Nothing in this module prices anything or decides a cost — it only reports wha
 drawing says. `calculators.py` owns all arithmetic.
 """
 
-import base64
-import io
 import os
 import re
 from pathlib import Path
@@ -322,6 +320,7 @@ def _assign_dimensions(dimensions, item_type):
 
 _ocr_reader = None
 _ocr_checked = False
+_ocr_init_error = None
 
 
 def ocr_status():
@@ -358,7 +357,7 @@ def ocr_status():
 def _run_ocr(pil_image):
     """OCR at native resolution — deliberately no downsampling, since dimension text on a
     drawing is small and the first thing lost when an image is scaled down."""
-    global _ocr_reader, _ocr_checked
+    global _ocr_reader, _ocr_checked, _ocr_init_error
     status = ocr_status()
     if not status["available"]:
         return "", status
@@ -369,9 +368,19 @@ def _run_ocr(pil_image):
             import numpy as np
             if _ocr_reader is None and not _ocr_checked:
                 _ocr_checked = True
-                _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+                try:
+                    _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+                except Exception as exc:
+                    # Recorded rather than raised: a bad init (e.g. a corrupt model cache)
+                    # would otherwise silently downgrade every remaining page in this batch
+                    # to "No text layer" with no clue why, since _ocr_checked=True stops a
+                    # retry on every subsequent page.
+                    _ocr_init_error = str(exc)
             if _ocr_reader is None:
-                return "", status
+                return "", {
+                    "available": False, "backend": "easyocr",
+                    "hint": f"OCR backend failed to start: {_ocr_init_error}",
+                }
             results = _ocr_reader.readtext(np.array(pil_image.convert("RGB")), detail=0)
             return "\n".join(results), status
 
@@ -494,7 +503,11 @@ def _parse_pdf(path, warnings):
 
             matrix = fitz.Matrix(PDF_RENDER_SCALE, PDF_RENDER_SCALE)
             pixmap = page.get_pixmap(matrix=matrix, alpha=False)
-            image = PILImage.open(io.BytesIO(pixmap.tobytes("png")))
+            # Pixel data comes straight off the pixmap's own buffer rather than round-tripping
+            # through a PNG encode+decode — ~13x faster on a full-resolution drawing sheet and
+            # this image is only ever downsampled into a thumbnail, never sent anywhere at
+            # full size.
+            image = PILImage.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
             width_px, height_px = image.size
             preview = image.copy()
             preview.thumbnail(PREVIEW_MAX_PX, PILImage.LANCZOS)

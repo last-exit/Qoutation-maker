@@ -340,7 +340,9 @@
     </div>
 
     <div class="panel-body">
-      <div class="est-dropzone" id="est-dropzone" onclick="pickDesignFiles()">
+      <div class="est-dropzone" id="est-dropzone" onclick="pickDesignFiles()"
+           ondragover="handleEstDragOver(event)" ondragleave="handleEstDragLeave(event)"
+           ondrop="handleEstDrop(event)">
         <span class="icon icon-lg" data-icon="upload"></span>
         <p class="est-dropzone-title">Drop in your design drawings</p>
         <p class="est-dropzone-sub">
