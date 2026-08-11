@@ -26,6 +26,7 @@ const ICONS = {
   history: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
   chat: '<path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l1.4-4.2A8.5 8.5 0 1 1 21 11.5z"/>',
+  download: '<path d="M12 3v12"/><path d="M7 12l5 5 5-5"/><path d="M4 21h16"/>',
   upload: '<path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
   link: '<path d="M10 14a5 5 0 0 0 7 0l2-2a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-2 2a5 5 0 0 0 7 7l1-1"/>',
   close: '<path d="M18 6 6 18M6 6l12 12"/>',
@@ -2062,6 +2063,7 @@ function openSuppliers() {
 let estimatorSpecs = [];        // editable spec per drawing page
 let estimatorPages = [];        // immutable parse output (thumbnail, raw text, warnings)
 let estimatorResults = [];      // BOQ per page, from the backend
+let estimatorRowIndex = [];     // backend spec_index -> row in estimatorSpecs
 let estimatorSummary = null;    // cumulative master summary
 let estimatorOptions = null;    // dropdown options + rate-card constants
 let estimatorMargin = 35;
@@ -2074,9 +2076,14 @@ const CONFIDENCE_LABELS = {
   none: 'Nothing detected — enter manually',
 };
 
+// Returns a promise so callers that need the options before they can draw anything — the
+// drawing import, above all — can wait for them instead of racing them. Dropping a file in
+// before this resolved left `estimatorOptions` null and the first render died on
+// `estimatorOptions.shapes`, surfacing as "Drawing import failed".
 function loadEstimatorOptions() {
-  if (!api() || estimatorLoaded) return;
-  api().get_estimator_options().then(function (res) {
+  if (!api()) return Promise.resolve();
+  if (estimatorLoaded) return Promise.resolve();
+  return api().get_estimator_options().then(function (res) {
     if (!res.success) { showToast(res.error || 'Could not load estimator options.', 'error'); return; }
     estimatorOptions = res.options;
     estimatorMargin = estimatorOptions.default_margin_pct;
@@ -2089,7 +2096,7 @@ function loadEstimatorOptions() {
     renderFabricationSettings();
     // OCR is only needed for raster drawings; vector PDFs are exact either way, so this
     // is stated once as a capability note rather than nagged as an error.
-    if (!estimatorOptions.ocr.available) {
+    if (estimatorOptions.ocr && !estimatorOptions.ocr.available) {
       showEstimatorNotice(
         `${estimatorOptions.ocr.hint} PDF drawings are unaffected.`, 'info'
       );
@@ -2126,6 +2133,18 @@ function pickDesignFiles() {
 // with a list of real filesystem paths and hand them here.
 function ingestDesignPaths(paths) {
   if (!api() || !paths || !paths.length) return;
+
+  // The options must be in before the first page is drawn — a drop that lands while they
+  // are still loading used to fail the whole import on a null read.
+  if (!estimatorOptions) {
+    return loadEstimatorOptions().then(function () {
+      if (!estimatorOptions) {
+        showToast('Estimator options are still loading — try again in a moment.', 'warning');
+        return;
+      }
+      return ingestDesignPaths(paths);
+    });
+  }
 
   const loading = document.getElementById('est-loading');
   loading.classList.remove('hidden');
@@ -2407,6 +2426,9 @@ function estTryFillFromChip(event, idx, field) {
 function renderEstimatorPages() {
   const container = document.getElementById('est-pages');
   if (!estimatorSpecs.length) { container.innerHTML = ''; return; }
+  // Every row needs the shape list, the finishes and the rate-card options to draw. If they
+  // are not in yet there is nothing meaningful to paint, and painting anyway throws.
+  if (!estimatorOptions) { return; }
 
   let html = '';
   estimatorPages.forEach(function (page, pageIndex) {
@@ -2517,7 +2539,7 @@ function renderElementRow(spec, idx, pageIndex) {
 // pair (that is what the parser emits and the engine consumes); the dropdown speaks the new
 // seven-shape vocabulary, so the two are matched here.
 function mergedShapeKey(spec) {
-  const shapes = estimatorOptions.shapes || [];
+  const shapes = (estimatorOptions && estimatorOptions.shapes) || [];
   if (spec.shape_key && shapes.some(s => s.key === spec.shape_key)) return spec.shape_key;
   const found = shapes.find(s => s.item_type === spec.item_type && s.shape === (spec.shape || 'flat'));
   return found ? found.key : (shapes[0] && shapes[0].key) || 'wall_flat';
@@ -2544,7 +2566,8 @@ function estSetShape(idx, key) {
 // go away again once the item can be priced from the drawing.
 
 function estManualNeeded(spec) {
-  const shape = (estimatorOptions.shapes || []).find(s => s.key === mergedShapeKey(spec));
+  const shape = ((estimatorOptions && estimatorOptions.shapes) || [])
+    .find(s => s.key === mergedShapeKey(spec));
   const dims = (shape && shape.dims) || [];
   // "Unpriceable" means a dimension the shape actually needs is still blank, not merely
   // that some optional field is empty.
@@ -2836,6 +2859,42 @@ function saveFabricationSetting(key, value) {
   });
 }
 
+// Packages the app for another machine. Runs on the Python side and can take a little
+// while — the model files alone are ~87MB — so the button reports that it is working
+// rather than looking dead.
+function exportAppPackage() {
+  if (!api()) return;
+  const button = document.getElementById('package-btn');
+  const result = document.getElementById('package-result');
+  const original = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = `${icon('refresh', 'icon-sm')}<span>Packaging…</span>`;
+  result.classList.add('hidden');
+
+  api().export_app_package().then(function (res) {
+    button.disabled = false;
+    button.innerHTML = original;
+    hydrateIcons();
+    result.classList.remove('hidden');
+    if (!res.success) {
+      result.className = 'banner banner-warning';
+      result.innerHTML = `${icon('alert', 'icon')}<span>${esc(res.error || 'Packaging failed.')}</span>`;
+      return;
+    }
+    result.className = 'banner banner-success';
+    result.innerHTML = `${icon('check', 'icon')}<span style="word-break:break-all;">
+      Saved to <b>${esc(res.path)}</b> — ${res.files} files, ${res.size_mb} MB.
+      Send them the zip; they unzip it and double-click <b>Setup Windows.bat</b> or
+      <b>Setup Mac or Linux.command</b>.</span>`;
+    showToast('App packaged to your Desktop.', 'success');
+  }).catch(function (err) {
+    button.disabled = false;
+    button.innerHTML = original;
+    hydrateIcons();
+    showToast('Packaging failed: ' + err, 'error');
+  });
+}
+
 function resetFabricationSettings() {
   if (!api()) return;
   if (!confirm('Put every curved/ring fabrication constant back to its default?')) return;
@@ -2971,6 +3030,10 @@ function recalcEstimate() {
       estimatorResults = res.items;
       estimatorSummary = res.summary;
 
+      // Kept so summary-wide edits can map a consolidated line back to the items that
+      // contributed to it — the backend stamps positions in the list it was sent, not rows.
+      estimatorRowIndex = rowIndex;
+
       // Failed specs are dropped from res.items rather than left as placeholders, so the
       // array no longer lines up 1:1 with what was sent — match on the stamped index.
       res.items.forEach(function (item) {
@@ -3049,6 +3112,14 @@ function estAddMaterial(idx, code) {
 function estSetRate(idx, code, value) {
   const spec = estimatorSpecs[idx];
   if (!spec) return;
+
+  const custom = estCustomLine(spec, code);
+  if (custom) {
+    custom.rate = Math.max(0, parseFloat(value) || 0);
+    recalcEstimate();
+    return;
+  }
+
   spec.rate_overrides = spec.rate_overrides || {};
   const num = parseFloat(value);
   if (isNaN(num) || num < 0) delete spec.rate_overrides[code];
@@ -3071,30 +3142,53 @@ function renderItemCost(item, idx) {
     return `<div class="est-notice est-notice-warning">${icon('alert', 'icon-sm')}<span>${esc(item.dimension_message)}</span></div>`;
   }
 
+  // Every figure on a bill line is editable: the name, the quantity and the rate. The
+  // computed value is the starting point, not the last word — the PM knows things the
+  // drawing does not. An edited line is marked so the derived numbers stay tellable apart.
   const materialRows = item.materials.map(m => `
-    <tr>
-      <td><span class="est-code">${esc(m.code)}</span> ${esc(m.description)}</td>
-      <td class="num">${m.qty}</td>
+    <tr class="${m.edited ? 'est-row-edited' : ''}">
+      <td>
+        <span class="est-code">${esc(m.code)}</span>
+        <input type="text" class="input est-name-input" value="${esc(m.description)}"
+               onchange="estSetLineField(${idx},'${esc(m.code)}','description',this.value)">
+      </td>
+      <td class="num">
+        <input type="number" class="input est-qty-input" min="0" step="1" value="${m.qty}"
+               onchange="estSetLineField(${idx},'${esc(m.code)}','qty',this.value)">
+      </td>
       <td>${esc(m.unit)}</td>
       <td class="num">
         <input type="number" class="input est-rate-input" min="0" step="0.01" value="${m.unit_cost}"
                title="Card rate: ${money(m.default_cost)}${m.unit_cost !== m.default_cost ? ' (overridden)' : ''}"
-               onchange="estSetRate(${idx},'${m.code}',this.value)">
+               onchange="estSetRate(${idx},'${esc(m.code)}',this.value)">
       </td>
-      <td class="num strong">${money(m.line_cost)}</td>
+      <td class="num strong">${money(m.line_cost)}
+        <button class="icon-btn est-line-del" title="Remove this line"
+                onclick="estRemoveLine(${idx},'${esc(m.code)}')">${icon('close', 'icon-sm')}</button>
+      </td>
     </tr>
     <tr class="est-basis-row"><td colspan="5">${esc(m.basis)}</td></tr>`).join('');
 
   const laborRows = item.labor.map(l => `
-    <tr>
-      <td>Labor — ${esc(l.trade)}</td>
-      <td class="num">${l.hours}</td>
+    <tr class="${l.edited ? 'est-row-edited' : ''}">
+      <td>
+        <input type="text" class="input est-name-input"
+               value="${esc(l.label || ('Labor — ' + l.trade))}"
+               onchange="estSetLineField(${idx},'${esc(l.trade)}','description',this.value)">
+      </td>
+      <td class="num">
+        <input type="number" class="input est-qty-input" min="0" step="0.25" value="${l.hours}"
+               onchange="estSetLineField(${idx},'${esc(l.trade)}','qty',this.value)">
+      </td>
       <td>Hrs</td>
       <td class="num">
         <input type="number" class="input est-rate-input" min="0" step="0.01" value="${l.rate}"
-               onchange="estSetLaborRate(${idx},'${l.trade}',this.value)">
+               onchange="estSetLaborRate(${idx},'${esc(l.trade)}',this.value)">
       </td>
-      <td class="num strong">${money(l.cost)}</td>
+      <td class="num strong">${money(l.cost)}
+        <button class="icon-btn est-line-del" title="Remove this line"
+                onclick="estRemoveLine(${idx},'${esc(l.trade)}')">${icon('close', 'icon-sm')}</button>
+      </td>
     </tr>
     <tr class="est-basis-row"><td colspan="5">${esc(l.basis)}</td></tr>`).join('');
 
@@ -3142,7 +3236,142 @@ function renderItemCost(item, idx) {
           <td class="num strong">${money(item.factory_cost)}</td>
         </tr>
       </tfoot>
-    </table>`;
+    </table>
+    <button class="btn btn-ghost btn-xs" onclick="estAddLine(${idx})">
+      ${icon('plus', 'icon-sm')} Add a line to this item
+    </button>`;
+}
+
+// --- Editing a bill line ---------------------------------------------------
+// The computed bill is a starting point. These write the PM's corrections onto the spec,
+// where compute_item_boq applies them last so an edit always beats the formula.
+
+// A hand-added line has no computed original, so its edits are written straight onto the
+// line rather than into the override map that corrects computed ones.
+function estCustomLine(spec, key) {
+  return (spec.extra_lines || []).find(l => (l.code || 'CUSTOM') === key);
+}
+
+function estSetLineField(idx, key, field, value) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+
+  const custom = estCustomLine(spec, key);
+  if (custom) {
+    if (field === 'qty') custom.qty = parseFloat(value) || 0;
+    else custom.description = value;
+    recalcEstimate();
+    return;
+  }
+
+  spec.line_overrides = spec.line_overrides || {};
+  spec.line_overrides[key] = spec.line_overrides[key] || {};
+  spec.line_overrides[key][field] = field === 'qty' ? (parseFloat(value) || 0) : value;
+  recalcEstimate();
+}
+
+function estRemoveLine(idx, key) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  // A line added by hand is dropped outright; a computed one is remembered as removed so
+  // the next recalculation does not simply put it back.
+  spec.extra_lines = (spec.extra_lines || []).filter(l => (l.code || 'CUSTOM') !== key);
+  spec.removed_lines = spec.removed_lines || [];
+  if (spec.removed_lines.indexOf(key) < 0) spec.removed_lines.push(key);
+  recalcEstimate();
+}
+
+// --- Summary-wide edits ----------------------------------------------------
+// The summary consolidates every item, so an edit made there is pushed down to each item
+// that contributes to the line. That keeps one source of truth — the items — while letting
+// the PM work from whichever view they happen to be looking at.
+
+function estSetRateEverywhere(code, value) {
+  const rate = parseFloat(value);
+  estimatorSpecs.forEach(function (spec) {
+    const custom = estCustomLine(spec, code);
+    if (custom) { custom.rate = Math.max(0, rate || 0); return; }
+    spec.rate_overrides = spec.rate_overrides || {};
+    if (isNaN(rate) || rate < 0) delete spec.rate_overrides[code];
+    else spec.rate_overrides[code] = rate;
+  });
+  recalcEstimate();
+}
+
+// A consolidated quantity is the total across several items, so a new total is shared out
+// in the same proportions the items already hold: an item contributing 60% of the boards
+// keeps 60% of them. Rounding drift is put on the largest contributor, so the item totals
+// always add back up to exactly the number that was typed rather than one out.
+function estSetQtyEverywhere(code, value) {
+  const target = Math.max(0, parseFloat(value) || 0);
+  const contributors = [];
+
+  (estimatorResults || []).forEach(function (item) {
+    const rowIdx = estimatorRowIndex[item.spec_index];
+    if (rowIdx === undefined) return;
+    (item.materials || []).forEach(function (m) {
+      if (m.code === code && m.qty > 0) {
+        contributors.push({ idx: rowIdx, qty: m.qty });
+      }
+    });
+  });
+
+  if (!contributors.length) return;
+  const current = contributors.reduce((sum, c) => sum + c.qty, 0);
+  if (current <= 0) return;
+
+  const factor = target / current;
+  let assigned = 0;
+  contributors.forEach(function (c) {
+    c.newQty = Math.max(0, Math.round(c.qty * factor));
+    assigned += c.newQty;
+  });
+
+  const drift = Math.round(target) - assigned;
+  if (drift !== 0) {
+    const biggest = contributors.reduce((a, b) => (b.qty > a.qty ? b : a));
+    biggest.newQty = Math.max(0, biggest.newQty + drift);
+  }
+
+  contributors.forEach(function (c) {
+    const spec = estimatorSpecs[c.idx];
+    if (!spec) return;
+    spec.line_overrides = spec.line_overrides || {};
+    spec.line_overrides[code] = spec.line_overrides[code] || {};
+    spec.line_overrides[code].qty = c.newQty;
+  });
+  recalcEstimate();
+}
+
+function estSetLaborRateEverywhere(trade, value) {
+  const rate = parseFloat(value);
+  estimatorSpecs.forEach(function (spec) {
+    spec.labor_rate_overrides = spec.labor_rate_overrides || {};
+    if (isNaN(rate) || rate < 0) delete spec.labor_rate_overrides[trade];
+    else spec.labor_rate_overrides[trade] = rate;
+  });
+  recalcEstimate();
+}
+
+function estRemoveLineEverywhere(key) {
+  if (!confirm(`Remove ${key} from every item on this quotation?`)) return;
+  estimatorSpecs.forEach(function (spec) {
+    spec.extra_lines = (spec.extra_lines || []).filter(l => (l.code || 'CUSTOM') !== key);
+    spec.removed_lines = spec.removed_lines || [];
+    if (spec.removed_lines.indexOf(key) < 0) spec.removed_lines.push(key);
+  });
+  recalcEstimate();
+}
+
+function estAddLine(idx) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  spec.extra_lines = spec.extra_lines || [];
+  spec.extra_lines.push({
+    code: 'CUSTOM-' + (spec.extra_lines.length + 1),
+    description: 'New line', unit: 'Unit', qty: 1, rate: 0,
+  });
+  recalcEstimate();
 }
 
 function renderEstimatorSummary() {
@@ -3150,14 +3379,30 @@ function renderEstimatorSummary() {
   if (!estimatorSummary) { container.innerHTML = ''; return; }
   const s = estimatorSummary;
 
+  // The summary is the sum of the items, so it stays in step by editing them rather than
+  // holding figures of its own. A rate changed here is applied to every item using that
+  // material — which is usually what a PM means by "that board costs 70 now". Quantity is
+  // deliberately not editable here: it is the total across several items, and there is no
+  // honest way to decide which item a changed total belongs to. Edit it on the item.
   const materialRows = s.consolidated_materials.map(m => `
     <tr>
       <td><span class="est-code">${esc(m.code)}</span> ${esc(m.description)}</td>
       <td>${esc(m.category)}</td>
-      <td class="num">${m.qty}</td>
+      <td class="num">
+        <input type="number" class="input est-qty-input" min="0" step="1" value="${m.qty}"
+               title="Splits proportionally across every item using ${esc(m.code)}"
+               onchange="estSetQtyEverywhere('${esc(m.code)}',this.value)">
+      </td>
       <td>${esc(m.unit)}</td>
-      <td class="num">${money(m.unit_cost)}</td>
-      <td class="num strong">${money(m.line_cost)}</td>
+      <td class="num">
+        <input type="number" class="input est-rate-input" min="0" step="0.01" value="${m.unit_cost}"
+               title="Applies this rate to every item using ${esc(m.code)}"
+               onchange="estSetRateEverywhere('${esc(m.code)}',this.value)">
+      </td>
+      <td class="num strong">${money(m.line_cost)}
+        <button class="icon-btn est-line-del" title="Remove this material from every item"
+                onclick="estRemoveLineEverywhere('${esc(m.code)}')">${icon('close', 'icon-sm')}</button>
+      </td>
     </tr>`).join('');
 
   const laborRows = s.labor_by_trade.map(l => `
@@ -3165,8 +3410,15 @@ function renderEstimatorSummary() {
       <td colspan="2">Labor — ${esc(l.trade)}</td>
       <td class="num">${l.hours}</td>
       <td>Hrs</td>
-      <td class="num">${money(l.rate)}</td>
-      <td class="num strong">${money(l.cost)}</td>
+      <td class="num">
+        <input type="number" class="input est-rate-input" min="0" step="0.01" value="${l.rate}"
+               title="Applies this rate to every item"
+               onchange="estSetLaborRateEverywhere('${esc(l.trade)}',this.value)">
+      </td>
+      <td class="num strong">${money(l.cost)}
+        <button class="icon-btn est-line-del" title="Remove this labour from every item"
+                onclick="estRemoveLineEverywhere('${esc(l.trade)}')">${icon('close', 'icon-sm')}</button>
+      </td>
     </tr>`).join('');
 
   container.innerHTML = `

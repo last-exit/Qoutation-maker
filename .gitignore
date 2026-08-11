@@ -62,6 +62,12 @@ logs/
 *_Quotation_*.pdf
 scratch/
 
+# Sample quotations contain real client data and pricing.
+sample_quotes/
+
+# Impeccable review artefacts — local tooling, not source.
+.impeccable/
+
 # --- graphify local state -----------------------------------------------------
 # graph.json / GRAPH_REPORT.md are committed (CLAUDE.md points contributors at them).
 # These are machine-local: an AST cache that regenerates, absolute interpreter paths

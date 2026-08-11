@@ -22,6 +22,7 @@ import image_store
 import image_tools
 import logging_setup
 import maintenance
+import packager
 import pdf_export
 import sharing
 import corrections_db
@@ -1121,6 +1122,20 @@ class QuotationApi:
             if not result:
                 return {"success": False, "error": "No files selected."}
             return {"success": True, "paths": list(result)}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def export_app_package(self):
+        """Writes a zip of the app to the Desktop that installs elsewhere in one click.
+
+        Application only — no quotations, invoices, client records or search index travel
+        with it (see `packager.py`, which works from an allowlist precisely so a new data
+        file cannot quietly start being shipped to whoever receives the zip).
+        """
+        try:
+            path, count, size = packager.build()
+            return {"success": True, "path": str(path), "files": count,
+                    "size_mb": round(size / 1_000_000, 1)}
         except Exception as e:
             return {"success": False, "error": str(e)}
 

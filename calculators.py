@@ -515,6 +515,81 @@ def _line(card, code, qty, basis, category=None, override_cost=None):
     }
 
 
+def _apply_line_edits(materials, labor, spec, card, line_fn):
+    """Applies the PM's edits to a computed bill: renames, quantities, deletions, additions.
+
+    Keyed by `code` for materials and `trade` for labour, which is what the UI addresses a
+    row by. An edited quantity replaces the derived one outright rather than scaling it —
+    when a PM types 14 sheets they mean 14, not 14 times a wastage factor they cannot see.
+    The original figure stays in `basis` so nothing is lost.
+    """
+    removed = set(spec.get("removed_lines") or [])
+    edits = spec.get("line_overrides") or {}
+
+    kept_materials = []
+    for material in materials:
+        if material["code"] in removed:
+            continue
+        edit = edits.get(material["code"]) or {}
+        if edit.get("description"):
+            material["description"] = str(edit["description"])
+            material["edited"] = True
+        if edit.get("qty") is not None:
+            try:
+                new_qty = max(0, int(float(edit["qty"])))
+            except (TypeError, ValueError):
+                new_qty = material["qty"]
+            if new_qty != material["qty"]:
+                material["basis"] = f"{material['basis']} — set to {new_qty} by you"
+                material["qty"] = new_qty
+                material["edited"] = True
+        material["line_cost"] = round(material["qty"] * material["unit_cost"], 2)
+        kept_materials.append(material)
+
+    # Lines the drawing never implied: site works, a bought-in part, a delivery charge.
+    for extra in spec.get("extra_lines") or []:
+        try:
+            qty = max(0, float(extra.get("qty") or 0))
+            rate = max(0.0, float(extra.get("rate") or 0))
+        except (TypeError, ValueError):
+            continue
+        code = str(extra.get("code") or "CUSTOM").strip() or "CUSTOM"
+        kept_materials.append({
+            "code": code,
+            "description": str(extra.get("description") or "Custom line"),
+            "category": "Added by you",
+            "unit": str(extra.get("unit") or "Unit"),
+            "qty": int(qty),
+            "raw_qty": qty,
+            "unit_cost": rate,
+            "default_cost": rate,
+            "line_cost": round(int(qty) * rate, 2),
+            "basis": "added by you",
+            "edited": True,
+            "custom": True,
+        })
+
+    kept_labor = []
+    for entry in labor:
+        if entry["trade"] in removed:
+            continue
+        edit = edits.get(entry["trade"]) or {}
+        if edit.get("description"):
+            entry["label"] = str(edit["description"])
+            entry["edited"] = True
+        if edit.get("qty") is not None:
+            try:
+                entry["hours"] = round(max(0.0, float(edit["qty"])), 2)
+                entry["basis"] = f"{entry['basis']} — set to {entry['hours']} hr by you"
+                entry["edited"] = True
+            except (TypeError, ValueError):
+                pass
+        entry["cost"] = round(entry["hours"] * entry["rate"], 2)
+        kept_labor.append(entry)
+
+    return kept_materials, kept_labor
+
+
 def missing_required_dims(item_type, spec):
     """The required dimension fields this spec has not supplied a positive value for.
 
@@ -908,6 +983,14 @@ def compute_item_boq(spec, card=None):
             "cost": round(elec_hours * rate, 2),
             "basis": f"{float(spec['led_meters']):.2f} m LED x 0.15 hr/m",
         })
+
+    # --- PM edits to the bill ---------------------------------------------------------
+    # Everything above is derived from geometry and the rate card. This is where the PM's
+    # own corrections land: a renamed line, a quantity they know better than the formula, a
+    # line deleted because it is already on site, or one added that no drawing implied.
+    # Applied last so an edit always wins over the calculation, and recorded on the line so
+    # the UI can show which figures are no longer the computed ones.
+    materials, labor = _apply_line_edits(materials, labor, spec, card, line)
 
     # --- Roll up (single unit, then multiplied by quantity) --------------------------
     unit_material_cost = round(sum(m["line_cost"] for m in materials), 2)

@@ -183,3 +183,67 @@ def test_items_needing_dimensions_contribute_nothing_to_the_total():
 
     assert together["factory_cost"] == alone["factory_cost"]
     assert together["selling_price"] == alone["selling_price"]
+
+
+# --- PM edits to the bill --------------------------------------------------------------
+# The computed bill is a starting point. A PM who knows the site needs 14 sheets, or that a
+# line is already bought, must be able to say so — and the summary has to follow.
+
+def edited(**over):
+    spec = spec_for("wall", length_m=5.0, height_m=2.4)
+    spec.update(over)
+    return calc.compute_item_boq(spec)
+
+
+def test_an_edited_quantity_replaces_the_derived_one():
+    """Typing 3 means 3 — not 3 scaled by a wastage factor the PM cannot see."""
+    boq = edited(line_overrides={"WD-MDF-18": {"qty": 3}})
+    board = next(m for m in boq["materials"] if m["code"] == "WD-MDF-18")
+    assert board["qty"] == 3
+    assert board["line_cost"] == pytest.approx(3 * board["unit_cost"])
+
+
+def test_an_edited_line_keeps_its_original_working_visible():
+    boq = edited(line_overrides={"WD-MDF-18": {"qty": 3}})
+    board = next(m for m in boq["materials"] if m["code"] == "WD-MDF-18")
+    assert "set to 3 by you" in board["basis"]
+    assert board["edited"] is True
+
+
+def test_a_renamed_line_keeps_its_code_and_price():
+    boq = edited(line_overrides={"WD-MDF-18": {"description": "Client-supplied board"}})
+    board = next(m for m in boq["materials"] if m["code"] == "WD-MDF-18")
+    assert board["description"] == "Client-supplied board"
+    assert board["unit_cost"] > 0
+
+
+def test_a_removed_line_stays_removed_and_leaves_the_total():
+    plain = edited()
+    without = edited(removed_lines=["PT-THN-05L"])
+    codes = [m["code"] for m in without["materials"]]
+    assert "PT-THN-05L" not in codes
+    assert without["factory_cost"] < plain["factory_cost"]
+
+
+def test_an_added_line_is_priced_and_counted():
+    boq = edited(extra_lines=[{"code": "CUSTOM-1", "description": "Site delivery",
+                               "unit": "Job", "qty": 2, "rate": 250}])
+    added = next(m for m in boq["materials"] if m["code"] == "CUSTOM-1")
+    assert added["line_cost"] == pytest.approx(500.0)
+    assert added["custom"] is True
+
+
+def test_edited_labour_hours_reprice_at_the_trade_rate():
+    boq = edited(line_overrides={"carpentry": {"qty": 10}})
+    carpentry = next(l for l in boq["labor"] if l["trade"] == "carpentry")
+    assert carpentry["hours"] == 10
+    assert carpentry["cost"] == pytest.approx(10 * carpentry["rate"])
+
+
+def test_the_summary_follows_the_items_it_is_built_from():
+    """The summary holds no figures of its own, so an item edit must show up in it."""
+    plain = calc.aggregate([edited()], margin_pct=0)
+    changed = calc.aggregate([edited(line_overrides={"WD-MDF-18": {"qty": 3}})], margin_pct=0)
+    assert changed["total_material_cost"] < plain["total_material_cost"]
+    board = next(m for m in changed["consolidated_materials"] if m["code"] == "WD-MDF-18")
+    assert board["qty"] == 3

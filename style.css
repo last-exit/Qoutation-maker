@@ -1010,3 +1010,13 @@ table.data-table tr:hover td { background: var(--bg-hover); }
 .est-progress-note { margin-top: 4px; font-size: 10px; line-height: 1.55; color: var(--text-muted); }
 .est-progress-clock { margin-top: 6px; font-size: 10px; font-variant-numeric: tabular-nums;
   color: var(--accent); font-weight: 650; }
+
+/* --- Editable bill lines --- */
+.est-name-input { padding: 3px 6px; font-size: 10.5px; width: 100%; max-width: 260px;
+  background: transparent; border-color: transparent; }
+.est-name-input:hover, .est-name-input:focus { background: var(--bg-input); border-color: var(--border); }
+.est-qty-input { padding: 3px 6px; font-size: 10.5px; width: 62px; text-align: right; }
+.est-row-edited td { background: var(--warning-soft); }
+.est-line-del { margin-left: 6px; opacity: 0; transition: opacity .12s ease; vertical-align: middle; }
+tr:hover .est-line-del { opacity: .7; }
+.est-line-del:hover { opacity: 1; color: var(--danger); }

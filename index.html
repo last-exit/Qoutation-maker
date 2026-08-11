@@ -394,6 +394,18 @@
       </button>
 
       <div class="settings-divider"></div>
+      <label class="field-label">Give this app to someone else</label>
+      <p class="settings-hint">
+        Saves a zip to your Desktop. They unzip it and double-click one file — it installs
+        itself and starts. Works on Windows, Mac and Linux. No quotations, invoices or
+        client records are included; it is the application only.
+      </p>
+      <button class="btn btn-primary btn-block" id="package-btn" onclick="exportAppPackage()">
+        <span class="icon icon-sm" data-icon="download"></span><span>Package App for Another Machine</span>
+      </button>
+      <div id="package-result" class="hidden"></div>
+
+      <div class="settings-divider"></div>
       <label class="field-label">Something went wrong?</label>
       <p class="settings-hint">
         Saves a diagnostics file to your Desktop with the app's recent activity log — no client

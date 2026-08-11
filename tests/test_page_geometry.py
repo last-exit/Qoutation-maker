@@ -288,3 +288,37 @@ class TestJunkLabelsRejected:
         for element in page_out["elements"]:
             assert "=s" not in element["label"]
             assert element["label"] != "50.0cm"
+
+
+class TestIncrementalImport:
+    """Pages are parsed one at a time so each appears as it is read. The result must match
+    a single-shot parse exactly, or the fast UI would be quietly quoting something else."""
+
+    def test_page_count_is_known_before_parsing(self, tmp_path):
+        path = _elevation(tmp_path / "deck.pdf", [TOWER, PORTAL])
+        assert dp.page_count(path) == 1
+
+    def test_a_slice_returns_only_that_page(self, tmp_path):
+        path = _elevation(tmp_path / "one.pdf", [TOWER])
+        result = dp.parse_page_range(path, 0, 1)
+        assert result["success"] and len(result["drawings"]) == 1
+
+    def test_incremental_matches_a_single_shot_parse(self, tmp_path):
+        path = _elevation(tmp_path / "two.pdf", [TOWER, PORTAL])
+
+        incremental = []
+        for index in range(dp.page_count(path)):
+            incremental.extend(dp.parse_page_range(path, index, 1)["drawings"])
+        dp.reconcile(incremental)
+
+        one_shot = dp.parse_files([path])["drawings"]
+
+        def signature(pages):
+            return [(p["page_number"], e["label"], e["length_m"], e["height_m"],
+                     e["include"]) for p in pages for e in p["elements"]]
+
+        assert signature(incremental) == signature(one_shot)
+
+    def test_a_missing_file_reports_rather_than_raising(self, tmp_path):
+        result = dp.parse_page_range(str(tmp_path / "nope.pdf"), 0, 1)
+        assert result["success"] is False and result["drawings"] == []
