@@ -2086,6 +2086,7 @@ function loadEstimatorOptions() {
     if (badge) {
       badge.innerText = `${estimatorOptions.rate_card.item_count} rates · ${estimatorOptions.rate_card.source}`;
     }
+    renderFabricationSettings();
     // OCR is only needed for raster drawings; vector PDFs are exact either way, so this
     // is stated once as a capability note rather than nagged as an error.
     if (!estimatorOptions.ocr.available) {
@@ -2128,39 +2129,142 @@ function ingestDesignPaths(paths) {
 
   const loading = document.getElementById('est-loading');
   loading.classList.remove('hidden');
-  loading.innerHTML = skeletonCards(Math.min(paths.length, 3));
 
-  return api().parse_design_files(paths).then(function (parsed) {
+  // A drawing with no text layer has to be OCR'd, and that costs real seconds per page —
+  // a full deck can run to minutes. A bare skeleton for that long reads as a frozen app,
+  // so say what is happening and roughly how long, and keep a clock running so there is
+  // visible evidence it is still working.
+  const usesOcr = !(estimatorOptions && estimatorOptions.ocr && estimatorOptions.ocr.available === false);
+  const started = Date.now();
+  loading.innerHTML = `
+    <div class="est-progress">
+      <div class="est-progress-title">Reading your drawings…</div>
+      <div class="est-progress-note">${usesOcr
+        ? 'Pages without a text layer are read by OCR, which takes roughly 15–20 seconds each. A full deck can take a few minutes — this window stays responsive.'
+        : 'No OCR reader is installed, so pages without a text layer will need their dimensions typed in.'}</div>
+      <div class="est-progress-clock">
+        <span id="est-progress-count">starting…</span> ·
+        <span id="est-progress-clock">0s elapsed</span>
+      </div>
+    </div>
+    ${skeletonCards(Math.min(paths.length, 3))}`;
+  const ticker = setInterval(function () {
+    const el = document.getElementById('est-progress-clock');
+    if (el) el.textContent = Math.round((Date.now() - started) / 1000) + 's elapsed';
+  }, 1000);
+
+  const finish = function () {
+    clearInterval(ticker);
     loading.classList.add('hidden');
     loading.innerHTML = '';
+  };
 
-    if (!parsed.success) { showToast(parsed.error || 'Could not read those files.', 'error'); return; }
-    if (!parsed.drawings.length) { showToast('No readable drawing pages found.', 'warning'); return; }
+  const setProgress = function (done, total) {
+    const el = document.getElementById('est-progress-count');
+    if (el) el.textContent = `page ${done} of ${total}`;
+  };
 
-    parsed.drawings.forEach(function (page) {
-      estimatorPages.push(page);
-      // The detected values seed the editable spec; from here the PM owns them.
-      estimatorSpecs.push(Object.assign({}, page.detected, {
-        substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
-        cutouts: (page.detected.cutouts || []).map(c => Object.assign({}, c)),
-        rate_overrides: {}, labor_rate_overrides: {},
-        source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
-      }));
-    });
-
-    (parsed.skipped || []).forEach(s => showToast(`${s.file}: ${s.reason}`, 'warning'));
-    if ((parsed.warnings || []).length) {
-      showEstimatorNotice(parsed.warnings.join('  •  '), 'warning');
+  // Pages arrive one at a time and are shown as soon as each is read, so the PM can start
+  // correcting page 1 while page 12 is still being processed. Cross-page reconciliation
+  // still runs once at the end, because a duplicate is only visible when both sheets are in.
+  return importPagesSequentially(paths, setProgress).then(function (summary) {
+    finish();
+    if (!estimatorPages.length) {
+      showToast('No readable drawing pages found.', 'warning');
+      return;
     }
-
-    document.getElementById('est-dropzone').classList.add('est-dropzone-compact');
-    document.getElementById('est-clear-btn').style.display = '';
-    renderEstimatorPages();
-    recalcEstimate();
-    showToast(`${parsed.drawings.length} drawing page(s) parsed.`, 'success');
+    (summary.warnings || []).forEach(w => showEstimatorNotice(w, 'warning'));
+    showToast(`${estimatorPages.length} drawing page(s) parsed.`, 'success');
   }).catch(function (err) {
-    loading.classList.add('hidden');
+    // Must go through `finish` too, or the elapsed-time ticker keeps running forever
+    // against a hidden element after a failed import.
+    finish();
     showToast('Drawing import failed: ' + err, 'error');
+  });
+}
+
+// Appends one parsed page and the specs for its elements, then repaints.
+function absorbParsedPage(page) {
+  const pageIndex = estimatorPages.push(page) - 1;
+  (page.elements || [page.detected]).forEach(function (element) {
+    estimatorSpecs.push(Object.assign({}, element, {
+      page_index: pageIndex,
+      page_id: page.id,
+      element_id: element.id,
+      include: element.include !== false,
+      substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
+      cutouts: (element.cutouts || []).map(c => Object.assign({}, c)),
+      rate_overrides: {}, labor_rate_overrides: {},
+      source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
+    }));
+  });
+}
+
+function importPagesSequentially(paths, setProgress) {
+  const warnings = [];
+
+  return api().begin_design_import()
+    .then(() => api().design_page_counts(paths))
+    .then(function (counts) {
+      if (!counts.success) throw new Error(counts.error || 'Could not open those files.');
+      const total = counts.total_pages || 0;
+      let done = 0;
+      setProgress(0, total);
+
+      document.getElementById('est-dropzone').classList.add('est-dropzone-compact');
+      document.getElementById('est-clear-btn').style.display = '';
+
+      // Sequential rather than parallel: OCR is CPU-bound, so firing every page at once
+      // would finish no sooner and would starve the UI thread that draws the results.
+      let chain = Promise.resolve();
+      (counts.files || []).forEach(function (file) {
+        for (let start = 0; start < file.pages; start++) {
+          chain = chain.then(function () {
+            return api().parse_design_pages(file.path, start, 1).then(function (res) {
+              done += 1;
+              setProgress(done, total);
+              if (!res.success) {
+                warnings.push(`${file.name} p${start + 1}: ${res.error}`);
+                return;
+              }
+              (res.warnings || []).forEach(w => warnings.push(w));
+              (res.drawings || []).forEach(absorbParsedPage);
+              // Repaint after every page so the deck fills in as it is read.
+              renderEstimatorPages();
+              recalcEstimate();
+            });
+          });
+        }
+      });
+      return chain;
+    })
+    .then(() => api().finish_design_import())
+    .then(function (res) {
+      if (res && res.success) {
+        applyImportAdjustments(res.adjustments || []);
+        (res.warnings || []).forEach(w => warnings.push(w));
+        if (res.adjustments && res.adjustments.length) {
+          renderEstimatorPages();
+          recalcEstimate();
+        }
+      }
+      return { warnings: warnings };
+    });
+}
+
+// Reconciliation runs on the backend over the whole deck; only the changes come back, so
+// they are matched onto the specs already in the browser.
+function applyImportAdjustments(adjustments) {
+  adjustments.forEach(function (adj) {
+    const spec = estimatorSpecs.find(s => s.page_id === adj.page_id
+                                       && s.element_id === adj.element_id);
+    if (!spec) return;
+    spec.include = adj.include !== false;
+    spec.duplicate_of = adj.duplicate_of || null;
+    spec.filled_from = adj.filled_from || null;
+    ['length_m', 'height_m', 'depth_m'].forEach(function (f) {
+      if (adj[f] != null && !(+spec[f] > 0)) spec[f] = adj[f];
+    });
   });
 }
 
@@ -2192,6 +2296,7 @@ function clearEstimator() {
   estimatorPages = [];
   estimatorResults = [];
   estimatorSummary = null;
+  estimatorOpenRows = new Set();
   document.getElementById('est-pages').innerHTML = '';
   document.getElementById('est-summary').innerHTML = '';
   document.getElementById('est-notice').classList.add('hidden');
@@ -2201,126 +2306,570 @@ function clearEstimator() {
 
 // --- Rendering -------------------------------------------------------------
 
+// Which element rows are open. A sheet can carry eight items, and showing every field of
+// every one of them at once is unreadable — the row summarises, and opens on demand.
+let estimatorOpenRows = new Set();
+
+function estToggleRow(idx) {
+  if (estimatorOpenRows.has(idx)) estimatorOpenRows.delete(idx);
+  else estimatorOpenRows.add(idx);
+  renderEstimatorPages();
+  recalcEstimate();
+}
+
+function estToggleInclude(idx, checked) {
+  if (!estimatorSpecs[idx]) return;
+  estimatorSpecs[idx].include = !!checked;
+  renderEstimatorPages();
+  recalcEstimate();
+}
+
+// Hovering a row outlines the thing it refers to on the drawing. This is the single
+// feature that makes correcting an auto-split page quick: the PM can see which object a
+// row means instead of inferring it from a label.
+function estHighlight(pageIndex, idx, on) {
+  const box = document.getElementById(`est-box-${pageIndex}-${idx}`);
+  if (box) box.classList.toggle('est-box-active', !!on);
+  const row = document.getElementById(`est-row-${idx}`);
+  if (row) row.classList.toggle('est-element-hot', !!on);
+}
+
+function estSpecsForPage(pageIndex) {
+  const out = [];
+  estimatorSpecs.forEach(function (spec, idx) {
+    if ((spec.page_index || 0) === pageIndex) out.push({ spec: spec, idx: idx });
+  });
+  return out;
+}
+
+function estDimSummary(spec) {
+  const bits = [];
+  if (spec.length_m) bits.push(`${(+spec.length_m).toFixed(2)} m`);
+  if (spec.height_m) bits.push(`${(+spec.height_m).toFixed(2)} m`);
+  if (spec.shape === 'ring' && spec.outer_r_m) bits.push(`R${(+spec.outer_r_m).toFixed(2)} m`);
+  return bits.length ? bits.join(' × ') : 'no dimensions yet';
+}
+
+// Every dimension the parser read off a sheet, whether or not it could be tied to an
+// object. Clicking one arms it; clicking a dimension field then drops the value in. This is
+// what turns a page whose numbers were read but not attachable into two clicks, instead of
+// the dead end that produced a single wrong item.
+let estArmedChip = null;
+
+function renderDimensionChips(page, pageIndex) {
+  const found = page.dimensions_found || [];
+  if (!found.length) return '';
+  const seen = {};
+  const chips = [];
+  found.forEach(function (d) {
+    const meters = d.meters || 0;
+    if (meters <= 0) return;
+    const label = (d.raw || (meters + ' m')).trim();
+    if (seen[label]) return;
+    seen[label] = true;
+    chips.push(`<button type="button" class="est-dimchip" data-m="${meters}"
+      onclick="estArmChip(this, ${meters})">${esc(label)}</button>`);
+  });
+  if (!chips.length) return '';
+  return `<div class="est-dimchips">
+      <div class="est-dimchips-head">Dimensions read — click one, then a field</div>
+      ${chips.join('')}
+    </div>`;
+}
+
+function estArmChip(el, meters) {
+  const already = estArmedChip && estArmedChip.el === el;
+  estDisarmChip();
+  if (already) return;
+  estArmedChip = { meters: meters, el: el };
+  el.classList.add('est-dimchip-armed');
+  document.querySelectorAll('.est-element-body input[data-dim]')
+    .forEach(i => i.classList.add('est-dim-target'));
+}
+
+function estDisarmChip() {
+  if (estArmedChip && estArmedChip.el) estArmedChip.el.classList.remove('est-dimchip-armed');
+  document.querySelectorAll('.est-dim-target').forEach(i => i.classList.remove('est-dim-target'));
+  estArmedChip = null;
+}
+
+// A dimension field, when a chip is armed, takes the chip's value instead of being typed in.
+function estTryFillFromChip(event, idx, field) {
+  if (!estArmedChip) return false;
+  event.preventDefault();
+  const meters = estArmedChip.meters;
+  estDisarmChip();
+  estSet(idx, field, meters);
+  renderEstimatorPages();
+  return true;
+}
+
 function renderEstimatorPages() {
   const container = document.getElementById('est-pages');
   if (!estimatorSpecs.length) { container.innerHTML = ''; return; }
 
   let html = '';
-  estimatorSpecs.forEach(function (spec, idx) {
-    const page = estimatorPages[idx];
-    const conf = spec.confidence || 'none';
-    const typeOptions = estimatorOptions.item_types
-      .map(t => `<option value="${t.key}" ${spec.item_type === t.key ? 'selected' : ''}>${esc(t.label)}</option>`).join('');
-    const finishOptions = estimatorOptions.finishes
-      .map(f => `<option value="${f.key}" ${spec.finish === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('');
-    const substrateOptions = ['<option value="">Default (MDF 18mm)</option>'].concat(
-      estimatorOptions.substrates.map(s =>
-        `<option value="${s.code}" ${spec.substrate === s.code ? 'selected' : ''}>${esc(s.label)} — ${money(s.cost)}</option>`)
-    ).join('');
-    const framingOptions = ['<option value="">Default (2"x2" studs)</option>'].concat(
-      estimatorOptions.framing.map(f =>
-        `<option value="${f.code}" ${spec.framing === f.code ? 'selected' : ''}>${esc(f.label)} — ${money(f.cost)}</option>`)
-    ).join('');
+  estimatorPages.forEach(function (page, pageIndex) {
+    const entries = estSpecsForPage(pageIndex);
+    if (!entries.length) return;
+
+    const quoted = entries.filter(e => e.spec.include !== false).length;
+
+    // Boxes drawn over the thumbnail, positioned as percentages so they track the image
+    // however it is scaled by the layout.
+    const overlay = entries.map(function (entry) {
+      const box = entry.spec.bbox_px;
+      if (!box || !page.width_px || !page.height_px) return '';
+      const left = (box[0] / page.width_px) * 100;
+      const top = (box[1] / page.height_px) * 100;
+      const width = ((box[2] - box[0]) / page.width_px) * 100;
+      const height = ((box[3] - box[1]) / page.height_px) * 100;
+      return `<div class="est-box" id="est-box-${pageIndex}-${entry.idx}"
+                   style="left:${left}%;top:${top}%;width:${width}%;height:${height}%;"></div>`;
+    }).join('');
 
     html += `
-      <div class="est-card anim-in" style="animation-delay:${idx * 50}ms;">
+      <div class="est-card anim-in" style="animation-delay:${pageIndex * 50}ms;">
         <div class="est-card-head">
           <div class="est-card-title">
-            <span class="est-index">${idx + 1}</span>
-            <span>${esc(spec.label)}</span>
+            <span class="est-index">${pageIndex + 1}</span>
+            <span>${esc(page.file_name)} · p${page.page_number}/${page.page_count}</span>
           </div>
           <div class="est-card-meta">
-            <span class="est-chip">${esc(page.file_name)} · p${page.page_number}/${page.page_count}</span>
             <span class="est-chip est-chip-${page.text_source}">${page.text_source === 'vector' ? 'Vector text' : page.text_source === 'ocr' ? 'OCR' : 'No text'}</span>
-            <span class="est-chip est-conf-${conf}" title="${esc(CONFIDENCE_LABELS[conf] || '')}">${conf}</span>
+            ${page.page_kind ? `<span class="est-chip" title="${esc((page.page_kind_detail || {}).reason || '')}">${page.page_kind === 'flat' ? 'Elevation' : '3D view'}</span>` : ''}
+            <span class="est-chip est-chip-count">${entries.length} item${entries.length === 1 ? '' : 's'}${quoted !== entries.length ? ` · ${quoted} quoted` : ''}</span>
           </div>
         </div>
 
         <div class="est-split">
-          <!-- LEFT: the drawing itself -->
           <div class="est-visual">
-            <img src="${page.thumbnail}" alt="${esc(spec.label)}" onclick="openEstimatorPreview(${idx})">
-            <div class="est-visual-cap">
-              ${page.width_px} × ${page.height_px} px${spec.source_text ? ` · read “${esc(spec.source_text)}”` : ''}
+            <div class="est-visual-frame">
+              <img src="${page.thumbnail}" alt="${esc(page.file_name)}" onclick="openEstimatorPreview(${pageIndex})">
+              ${overlay}
             </div>
-            ${(page.warnings || []).map(w => `<div class="est-warn">${icon('alert', 'icon-sm')}<span>${esc(w)}</span></div>`).join('')}
+            <div class="est-visual-cap">${page.width_px} × ${page.height_px} px</div>
+            ${renderDimensionChips(page, pageIndex)}
+            ${page.read_message ? `<div class="est-readfail">${icon('alert', 'icon-sm')}<span>${esc(page.read_message)}</span></div>` : ''}
+            ${(page.warnings || []).filter(w => w !== page.read_message).map(w => `<div class="est-warn">${icon('alert', 'icon-sm')}<span>${esc(w)}</span></div>`).join('')}
           </div>
 
-          <!-- RIGHT: overrides + live cost -->
-          <div class="est-specs">
-            <div class="est-field-grid">
-              <div class="est-field est-field-wide">
-                <label>Item label</label>
-                <input type="text" class="input" value="${esc(spec.label)}"
-                       onchange="estSet(${idx},'label',this.value)">
-              </div>
-              <div class="est-field">
-                <label>Type</label>
-                <select class="input" onchange="estSet(${idx},'item_type',this.value)">${typeOptions}</select>
-              </div>
-              <div class="est-field">
-                <label>Qty</label>
-                <input type="number" class="input" min="1" step="1" value="${spec.quantity || 1}"
-                       onchange="estSet(${idx},'quantity',this.value)">
-              </div>
-              <div class="est-field">
-                <label>Length (m)</label>
-                <input type="number" class="input" min="0" step="0.01" value="${spec.length_m || 0}"
-                       onchange="estSet(${idx},'length_m',this.value)">
-              </div>
-              <div class="est-field">
-                <label>Height (m)</label>
-                <input type="number" class="input" min="0" step="0.01" value="${spec.height_m || 0}"
-                       onchange="estSet(${idx},'height_m',this.value)">
-              </div>
-              <div class="est-field">
-                <label>Depth (m)</label>
-                <input type="number" class="input" min="0" step="0.01" value="${spec.depth_m || 0}"
-                       onchange="estSet(${idx},'depth_m',this.value)" placeholder="auto">
-              </div>
-              <div class="est-field">
-                <label>Clad faces</label>
-                <input type="number" class="input" min="1" max="2" step="1" value="${spec.faces || 1}"
-                       onchange="estSet(${idx},'faces',this.value)">
-              </div>
-              <div class="est-field est-field-wide">
-                <label>Finish system</label>
-                <select class="input" onchange="estSet(${idx},'finish',this.value)">${finishOptions}</select>
-              </div>
-              <div class="est-field est-field-wide">
-                <label>Substrate board</label>
-                <select class="input" onchange="estSet(${idx},'substrate',this.value)">${substrateOptions}</select>
-              </div>
-              <div class="est-field est-field-wide">
-                <label>Framing</label>
-                <select class="input" onchange="estSet(${idx},'framing',this.value)">${framingOptions}</select>
-              </div>
-              <div class="est-field">
-                <label>LED strip (m)</label>
-                <input type="number" class="input" min="0" step="0.1" value="${spec.led_meters || 0}"
-                       onchange="estSet(${idx},'led_meters',this.value)">
-              </div>
-            </div>
-
-            ${spec.assumed_unit ? `<div class="est-warn">${icon('alert', 'icon-sm')}<span>Units weren't stated on the drawing — read as millimetres. Check the dimensions above.</span></div>` : ''}
-
-            <div class="est-cutouts">
-              <div class="est-subhead">
-                <span>Cutouts &amp; openings</span>
-                <button class="btn btn-ghost btn-xs" onclick="estAddCutout(${idx})">
-                  ${icon('plus', 'icon-sm')} Add
-                </button>
-              </div>
-              <div id="est-cutouts-${idx}">${renderCutoutRows(idx)}</div>
-            </div>
-
-            <div id="est-cost-${idx}" class="est-cost"></div>
+          <div class="est-elements">
+            ${entries.map(entry => renderElementRow(entry.spec, entry.idx, pageIndex)).join('')}
+            <button class="btn btn-ghost btn-xs est-add-element" onclick="estAddElement(${pageIndex})">
+              ${icon('plus', 'icon-sm')} Add an item from this drawing
+            </button>
           </div>
         </div>
       </div>`;
   });
 
   container.innerHTML = html;
+}
+
+function renderElementRow(spec, idx, pageIndex) {
+  const open = estimatorOpenRows.has(idx);
+  const conf = spec.confidence || 'none';
+  const excluded = spec.include === false;
+  const shapeMeta = (estimatorOptions.shapes || []).find(s => s.key === mergedShapeKey(spec));
+
+  return `
+    <div class="est-element ${open ? 'est-element-open' : ''} ${excluded ? 'est-element-off' : ''}"
+         id="est-row-${idx}"
+         onmouseenter="estHighlight(${pageIndex},${idx},true)"
+         onmouseleave="estHighlight(${pageIndex},${idx},false)">
+
+      <div class="est-element-head" onclick="estToggleRow(${idx})">
+        <input type="checkbox" class="est-include" ${excluded ? '' : 'checked'}
+               title="Include in the quotation"
+               onclick="event.stopPropagation();estToggleInclude(${idx},this.checked)">
+        <span class="est-caret ${open ? 'est-caret-open' : ''}">${icon('chevronRight', 'icon-sm')}</span>
+        <span class="est-element-name">${esc(spec.label || 'Untitled item')}</span>
+        <span class="est-chip est-chip-quiet ${spec.shape_source === 'detected' ? 'est-chip-detected' : ''}"
+              title="${spec.shape_source === 'detected' ? esc(spec.shape_reason || 'detected from the drawing') + ' — change it below if wrong' : ''}">
+          ${esc((shapeMeta && shapeMeta.label) || 'Flat')}${spec.shape_source === 'detected' ? ' ·detected' : ''}
+        </span>
+        <span class="est-element-dims">${esc(estDimSummary(spec))}</span>
+        <span class="est-chip est-conf-${conf}" title="${esc(CONFIDENCE_LABELS[conf] || '')}">${conf}</span>
+        <span class="est-rowcost" id="est-rowcost-${idx}"></span>
+      </div>
+
+      ${spec.duplicate_of ? `
+        <div class="est-note">
+          ${icon('alert', 'icon-sm')}
+          <span>Also drawn on ${esc(spec.duplicate_of.file)} p${spec.duplicate_of.page} — switched off so it is quoted once. Tick it if this is a separate build.</span>
+        </div>` : ''}
+
+      ${spec.filled_from ? `
+        <div class="est-note est-note-quiet">
+          ${icon('check', 'icon-sm')}
+          <span>${esc(spec.filled_from.fields.join(' and '))} taken from ${esc(spec.filled_from.file)} p${spec.filled_from.page}.</span>
+        </div>` : ''}
+
+      <div class="est-element-body" ${open ? '' : 'hidden'}>
+        ${renderElementFields(spec, idx)}
+        <div id="est-cost-${idx}" class="est-cost"></div>
+      </div>
+    </div>`;
+}
+
+// The merged shape a spec currently represents. Specs carry the legacy item_type + shape
+// pair (that is what the parser emits and the engine consumes); the dropdown speaks the new
+// seven-shape vocabulary, so the two are matched here.
+function mergedShapeKey(spec) {
+  const shapes = estimatorOptions.shapes || [];
+  if (spec.shape_key && shapes.some(s => s.key === spec.shape_key)) return spec.shape_key;
+  const found = shapes.find(s => s.item_type === spec.item_type && s.shape === (spec.shape || 'flat'));
+  return found ? found.key : (shapes[0] && shapes[0].key) || 'wall_flat';
+}
+
+// Picking a shape expands it back to the legacy pair the rest of the code works in, so a
+// single choice sets the geometry, the material roles and which dimension fields show.
+function estSetShape(idx, key) {
+  const spec = estimatorSpecs[idx];
+  const entry = (estimatorOptions.shapes || []).find(s => s.key === key);
+  if (!spec || !entry) return;
+  spec.shape_key = entry.key;
+  spec.item_type = entry.item_type;
+  spec.shape = entry.shape;
+  // Mark it as the PM's choice so a re-parse never quietly undoes their correction.
+  spec.shape_source = 'user';
+  renderEstimatorPages();
+  recalcEstimate();
+}
+
+// --- Manual entry ----------------------------------------------------------
+// When a drawing gave nothing, the PM must be able to price the item entirely by hand
+// without hunting through Advanced. Material and cost come to the front of the card, and
+// go away again once the item can be priced from the drawing.
+
+function estManualNeeded(spec) {
+  const shape = (estimatorOptions.shapes || []).find(s => s.key === mergedShapeKey(spec));
+  const dims = (shape && shape.dims) || [];
+  // "Unpriceable" means a dimension the shape actually needs is still blank, not merely
+  // that some optional field is empty.
+  const required = dims.filter(d => d.field !== 'faces' && d.field !== 'depth_m'
+                                    && d.field !== 'inner_r_m');
+  return required.some(d => !(+spec[d.field] > 0));
+}
+
+function renderManualBlock(spec, idx) {
+  if (!estManualNeeded(spec)) return '';
+  const material = spec.manual_material || null;
+  const cost = spec.manual_cost;
+
+  return `
+    <div class="est-group est-manual">
+      <div class="est-group-head">Material &amp; cost — enter by hand</div>
+      <p class="est-hint">This item could not be priced from the drawing. Type the
+         dimensions above, then name the material and its cost here.</p>
+      <div class="est-manual-row">
+        <input type="text" class="input" id="est-matq-${idx}"
+               placeholder="Search the rate card, or type a new material"
+               value="${esc(material ? material.description : (spec.manual_query || ''))}"
+               oninput="estMaterialSearch(${idx}, this.value)">
+        <input type="number" class="input est-manual-cost" min="0" step="0.01"
+               placeholder="Cost" value="${cost != null ? cost : ''}"
+               onchange="estSetManualCost(${idx}, this.value)">
+        <span class="est-manual-unit">${esc(material ? material.unit : '')}</span>
+      </div>
+      <div id="est-matresults-${idx}" class="est-matresults"></div>
+      ${material ? `
+        <p class="est-hint">Using <b>${esc(material.code)}</b> — ${esc(material.description)}
+           at ${money(cost != null ? cost : material.cost)} per ${esc(material.unit)}.</p>` : ''}
+    </div>`;
+}
+
+function estMaterialSearch(idx, needle) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  spec.manual_query = needle;
+  const host = document.getElementById(`est-matresults-${idx}`);
+  if (!host) return;
+  if (!api() || !needle || needle.length < 2) { host.innerHTML = ''; return; }
+
+  api().search_materials(needle, 8).then(function (res) {
+    if (!res.success) return;
+    const rows = (res.items || []).map(m => `
+      <button type="button" class="est-matrow"
+              onclick="estPickMaterial(${idx}, ${esc(JSON.stringify(JSON.stringify(m)))})">
+        <span class="est-code">${esc(m.code)}</span>
+        <span>${esc(m.description)}</span>
+        <b>${money(m.cost)}/${esc(m.unit)}</b>
+      </button>`).join('');
+
+    // Nothing on the sheet matches, so offer to create it — either for this quote only or
+    // permanently. The choice is explicit because saving edits the rate card everyone else
+    // prices against.
+    const createRow = `
+      <div class="est-matnew">
+        <span>Not on the rate card.</span>
+        <select class="input" id="est-newunit-${idx}">
+          <option>Sheet</option><option>Sqm</option><option>Piece</option>
+          <option>Length</option><option>Unit</option><option>Can</option>
+          <option>Drum</option><option>Liter</option><option>Box</option><option>Roll</option>
+        </select>
+        <button type="button" class="btn btn-ghost btn-xs" onclick="estUseMaterialOnce(${idx})">
+          Use once
+        </button>
+        <button type="button" class="btn btn-primary btn-xs" onclick="estSaveMaterial(${idx})">
+          Save to rate card
+        </button>
+      </div>`;
+
+    host.innerHTML = rows + createRow;
+  });
+}
+
+function estPickMaterial(idx, payload) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  const m = JSON.parse(payload);
+  spec.manual_material = m;
+  spec.substrate = m.code;                    // priced through the normal substrate path
+  if (spec.manual_cost == null) spec.manual_cost = m.cost;
+  spec.rate_overrides = spec.rate_overrides || {};
+  spec.rate_overrides[m.code] = spec.manual_cost;
+  renderEstimatorPages();
+  recalcEstimate();
+}
+
+function estSetManualCost(idx, value) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  const num = parseFloat(value);
+  spec.manual_cost = isNaN(num) ? null : num;
+  if (spec.manual_material && spec.manual_cost != null) {
+    spec.rate_overrides = spec.rate_overrides || {};
+    spec.rate_overrides[spec.manual_material.code] = spec.manual_cost;
+  }
+  recalcEstimate();
+}
+
+// Use-once: price this quote against a material the sheet does not have, without touching
+// the sheet. Implemented as a rate override on the auto-resolved code.
+function estUseMaterialOnce(idx) {
+  const spec = estimatorSpecs[idx];
+  if (!spec) return;
+  if (spec.manual_cost == null) { showToast('Enter a cost first.', 'warning'); return; }
+  spec.manual_material = {
+    code: spec.substrate || 'custom',
+    description: spec.manual_query || 'Custom material',
+    unit: (document.getElementById(`est-newunit-${idx}`) || {}).value || 'Unit',
+    cost: spec.manual_cost,
+  };
+  spec.rate_overrides = spec.rate_overrides || {};
+  if (spec.substrate) spec.rate_overrides[spec.substrate] = spec.manual_cost;
+  renderEstimatorPages();
+  recalcEstimate();
+  showToast('Used on this quote only — the rate card is unchanged.', 'success');
+}
+
+function estSaveMaterial(idx) {
+  const spec = estimatorSpecs[idx];
+  if (!spec || !api()) return;
+  const description = spec.manual_query || '';
+  const unit = (document.getElementById(`est-newunit-${idx}`) || {}).value || 'Unit';
+  if (!description) { showToast('Name the material first.', 'warning'); return; }
+  if (spec.manual_cost == null) { showToast('Enter a cost first.', 'warning'); return; }
+
+  api().add_material(description, unit, spec.manual_cost).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not add that material.', 'error'); return; }
+    spec.manual_material = res.item;
+    spec.substrate = res.item.code;
+    renderEstimatorPages();
+    recalcEstimate();
+    showToast(`${res.item.code} added to the rate card.`, 'success');
+  });
+}
+
+function renderElementFields(spec, idx) {
+  const shapeKey = mergedShapeKey(spec);
+  const shapeMeta = (estimatorOptions.shapes || []).find(s => s.key === shapeKey) || { dims: [] };
+  const shapeOptions = (estimatorOptions.shapes || [])
+    .map(s => `<option value="${s.key}" ${shapeKey === s.key ? 'selected' : ''}>${esc(s.label)}</option>`).join('');
+  const finishOptions = estimatorOptions.finishes
+    .map(f => `<option value="${f.key}" ${(spec.finish || 'paint_pu') === f.key ? 'selected' : ''}>${esc(f.label)}</option>`).join('');
+  const substrateOptions = ['<option value="">Auto — chosen from the sheet</option>'].concat(
+    estimatorOptions.substrates.map(s =>
+      `<option value="${s.code}" ${spec.substrate === s.code ? 'selected' : ''}>${esc(s.label)} — ${money(s.cost)}</option>`)
+  ).join('');
+  const framingOptions = ['<option value="">Auto — chosen from the sheet</option>'].concat(
+    estimatorOptions.framing.map(f =>
+      `<option value="${f.code}" ${spec.framing === f.code ? 'selected' : ''}>${esc(f.label)} — ${money(f.cost)}</option>`)
+  ).join('');
+
+  // Dimension inputs are generated from the shape's own field list, so a ring shows radii
+  // and a flat wall shows no curve rise — the shape decides, not a pile of conditionals.
+  const placeholders = { depth_m: 'auto', inner_r_m: '0 = solid disc' };
+  const dimensionFields = (shapeMeta.dims || []).map(function (d) {
+    const step = d.field === 'faces' ? '1' : '0.01';
+    const min = d.field === 'faces' ? '1' : '0';
+    const ph = placeholders[d.field] ? ` placeholder="${placeholders[d.field]}"` : '';
+    return `
+      <div class="est-field">
+        <label>${esc(d.label)}</label>
+        <input type="number" class="input" min="${min}" step="${step}" value="${spec[d.field] || 0}"
+               data-dim="${d.field}" data-idx="${idx}"
+               onclick="estTryFillFromChip(event,${idx},'${d.field}')"
+               onchange="estSet(${idx},'${d.field}',this.value)">
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="est-group">
+      <div class="est-group-head">Item</div>
+      <div class="est-field-grid">
+        <div class="est-field est-field-wide">
+          <label>Label</label>
+          <input type="text" class="input" value="${esc(spec.label || '')}"
+                 onchange="estSet(${idx},'label',this.value)">
+        </div>
+        <div class="est-field est-field-wide">
+          <label>Shape</label>
+          <select class="input" onchange="estSetShape(${idx},this.value)">${shapeOptions}</select>
+        </div>
+        <div class="est-field">
+          <label>Qty</label>
+          <input type="number" class="input" min="1" step="1" value="${spec.quantity || 1}"
+                 onchange="estSet(${idx},'quantity',this.value)">
+        </div>
+      </div>
+      ${shapeMeta.hint ? `<p class="est-hint">${esc(shapeMeta.hint)}</p>` : ''}
+    </div>
+
+    <div class="est-group">
+      <div class="est-group-head">Dimensions</div>
+      <div class="est-field-grid">${dimensionFields}</div>
+      ${spec.assumed_unit ? `<div class="est-warn">${icon('alert', 'icon-sm')}<span>Units weren't stated on the drawing — read as millimetres. Check these.</span></div>` : ''}
+      ${spec.source_text ? `<p class="est-hint">Read from the drawing: “${esc(spec.source_text)}”</p>` : ''}
+    </div>
+
+    <div class="est-group">
+      <div class="est-group-head">
+        <span>Cutouts &amp; openings</span>
+        <button class="btn btn-ghost btn-xs" onclick="estAddCutout(${idx})">
+          ${icon('plus', 'icon-sm')} Add
+        </button>
+      </div>
+      <div id="est-cutouts-${idx}">${renderCutoutRows(idx)}</div>
+    </div>
+
+    ${renderManualBlock(spec, idx)}
+
+    <details class="est-advanced">
+      <summary>Advanced — finish, materials, lighting</summary>
+      <div class="est-field-grid" style="margin-top:10px;">
+        <div class="est-field est-field-wide">
+          <label>Finish system</label>
+          <select class="input" onchange="estSet(${idx},'finish',this.value)">${finishOptions}</select>
+        </div>
+        <div class="est-field est-field-wide">
+          <label>Substrate board</label>
+          <select class="input" onchange="estSet(${idx},'substrate',this.value)">${substrateOptions}</select>
+        </div>
+        <div class="est-field est-field-wide">
+          <label>Framing</label>
+          <select class="input" onchange="estSet(${idx},'framing',this.value)">${framingOptions}</select>
+        </div>
+        <div class="est-field">
+          <label>LED strip (m)</label>
+          <input type="number" class="input" min="0" step="0.1" value="${spec.led_meters || 0}"
+                 onchange="estSet(${idx},'led_meters',this.value)">
+        </div>
+      </div>
+    </details>`;
+}
+
+// --- Fabrication settings --------------------------------------------------
+// The constants behind every curved price. They are editable because they are this
+// workshop's figures, not facts — and the ones this project guessed at say so, rather
+// than sitting in the quotation looking like settled numbers.
+
+function renderFabricationSettings() {
+  const host = document.getElementById('fabrication-fields');
+  if (!host) return;
+  const fabrication = (estimatorOptions && estimatorOptions.fabrication) || null;
+  if (!fabrication) { host.innerHTML = ''; return; }
+
+  host.innerHTML = fabrication.fields.map(function (field) {
+    const isText = typeof field.value === 'string';
+    const status = field.modified
+      ? '<span class="est-chip est-chip-quiet">yours</span>'
+      : (field.confirmed ? '' : '<span class="est-chip est-conf-low">unconfirmed</span>');
+    return `
+      <div class="fab-field">
+        <div class="fab-field-head">
+          <label for="fab-${field.key}">${esc(field.label)}</label>
+          ${status}
+        </div>
+        <div class="fab-field-row">
+          <input id="fab-${field.key}" class="input" type="${isText ? 'text' : 'number'}"
+                 ${isText ? '' : 'step="0.01" min="0"'}
+                 value="${esc(String(field.value))}"
+                 onchange="saveFabricationSetting('${field.key}', this.value)">
+          <span class="fab-unit">${esc(field.unit)}</span>
+        </div>
+        <p class="settings-hint">${esc(field.hint)}</p>
+      </div>`;
+  }).join('');
+
+  (fabrication.problems || []).forEach(function (problem) {
+    showToast(problem, 'warning');
+  });
+}
+
+function saveFabricationSetting(key, value) {
+  if (!api()) return;
+  const updates = {};
+  updates[key] = value;
+  api().save_fabrication_settings(updates).then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not save that setting.', 'error'); return; }
+    estimatorOptions.fabrication = res.fabrication;
+    (res.problems || []).forEach(p => showToast(p, 'warning'));
+    renderFabricationSettings();
+    // Curved prices depend on these, so anything already on screen is now stale.
+    recalcEstimate();
+    showToast('Fabrication setting saved.', 'success');
+  }).catch(function (err) {
+    showToast('Could not save that setting: ' + err, 'error');
+  });
+}
+
+function resetFabricationSettings() {
+  if (!api()) return;
+  if (!confirm('Put every curved/ring fabrication constant back to its default?')) return;
+  api().reset_fabrication_settings().then(function (res) {
+    if (!res.success) { showToast(res.error || 'Could not reset.', 'error'); return; }
+    estimatorOptions.fabrication = res.fabrication;
+    renderFabricationSettings();
+    recalcEstimate();
+    showToast('Fabrication settings reset to defaults.', 'success');
+  });
+}
+
+// A drawing always holds more than the parser could tie to a dimension. Rather than let
+// that be a dead end, the PM can add the missing item against the same sheet.
+function estAddElement(pageIndex) {
+  const page = estimatorPages[pageIndex];
+  if (!page) return;
+  estimatorSpecs.push({
+    page_index: pageIndex,
+    label: 'New item',
+    item_type: 'wall',
+    shape: 'flat',
+    length_m: 0, height_m: 0, depth_m: 0,
+    faces: 1, quantity: 1,
+    confidence: 'none',
+    include: true,
+    cutouts: [],
+    substrate: '', framing: '', finish: 'paint_pu', led_meters: 0,
+    rate_overrides: {}, labor_rate_overrides: {},
+    source: { file: page.file_name, page: page.page_number, thumbnail: page.thumbnail },
+  });
+  estimatorOpenRows.add(estimatorSpecs.length - 1);
+  renderEstimatorPages();
+  recalcEstimate();
 }
 
 function renderCutoutRows(idx) {
@@ -2349,11 +2898,19 @@ function renderCutoutRows(idx) {
 // Only the cost panes and the summary re-render on a change, never the inputs — a full
 // re-render would steal focus mid-edit and make the overrides unusable.
 
-const NUMERIC_SPEC_FIELDS = ['length_m', 'height_m', 'depth_m', 'faces', 'quantity', 'led_meters'];
+const NUMERIC_SPEC_FIELDS = ['length_m', 'height_m', 'depth_m', 'faces', 'quantity', 'led_meters',
+                             'sagitta_m', 'radius_m', 'outer_r_m', 'inner_r_m',
+                             'included_angle_deg'];
+
+// Changing these swaps which fields the row should be showing at all — a ring has radii
+// where a wall has a length — so the row is redrawn. Everything else only re-costs, because
+// a full re-render mid-edit would steal focus and make the inputs unusable.
+const RERENDER_SPEC_FIELDS = ['shape', 'item_type'];
 
 function estSet(idx, field, value) {
   if (!estimatorSpecs[idx]) return;
   estimatorSpecs[idx][field] = NUMERIC_SPEC_FIELDS.includes(field) ? (parseFloat(value) || 0) : value;
+  if (RERENDER_SPEC_FIELDS.includes(field)) renderEstimatorPages();
   recalcEstimate();
 }
 
@@ -2387,25 +2944,54 @@ function setEstimatorMargin(value) {
 function recalcEstimate() {
   if (!api() || !estimatorSpecs.length) return;
 
-  api().compute_design_estimate({ specs: estimatorSpecs, margin_pct: estimatorMargin })
+  // Only rows the PM has left switched on are priced. A duplicate found on another sheet
+  // is off by default, and sending it anyway would double-count it in the summary.
+  // The backend stamps `spec_index` by position in the list it receives, so that position
+  // is mapped back to the real row here rather than assuming the two line up.
+  const active = [];
+  const rowIndex = [];
+  estimatorSpecs.forEach(function (spec, idx) {
+    if (spec.include === false) return;
+    active.push(spec);
+    rowIndex.push(idx);
+  });
+
+  document.querySelectorAll('.est-rowcost').forEach(function (node) { node.textContent = ''; });
+
+  if (!active.length) {
+    estimatorResults = [];
+    estimatorSummary = null;
+    renderEstimatorSummary();
+    return;
+  }
+
+  api().compute_design_estimate({ specs: active, margin_pct: estimatorMargin })
     .then(function (res) {
       if (!res.success) { showToast(res.error || 'Costing failed.', 'error'); return; }
       estimatorResults = res.items;
       estimatorSummary = res.summary;
 
       // Failed specs are dropped from res.items rather than left as placeholders, so the
-      // array no longer lines up 1:1 with estimatorSpecs — match on the index the backend
-      // stamped onto each item instead of relying on array position.
+      // array no longer lines up 1:1 with what was sent — match on the stamped index.
       res.items.forEach(function (item) {
-        const target = document.getElementById(`est-cost-${item.spec_index}`);
-        if (target) target.innerHTML = renderItemCost(item, item.spec_index);
+        const idx = rowIndex[item.spec_index];
+        if (idx === undefined) return;
+        const target = document.getElementById(`est-cost-${idx}`);
+        if (target) target.innerHTML = renderItemCost(item, idx);
+        const badge = document.getElementById(`est-rowcost-${idx}`);
+        if (badge) {
+          badge.textContent = item.needs_dimensions ? 'needs a dimension' : money(item.factory_cost);
+          badge.classList.toggle('est-rowcost-missing', !!item.needs_dimensions);
+        }
       });
 
       (res.errors || []).forEach(function (e) {
-        const target = document.getElementById(`est-cost-${e.index}`);
+        const idx = rowIndex[e.index];
+        if (idx === undefined) return;
+        const target = document.getElementById(`est-cost-${idx}`);
         if (target) {
           target.innerHTML = e.code
-            ? estMissingMaterialForm(e.index, e.code, e.message)
+            ? estMissingMaterialForm(idx, e.code, e.message)
             : `<div class="est-notice est-notice-error">${icon('alert', 'icon-sm')}<span>${esc(e.message)}</span></div>`;
         }
         showToast(`${e.label}: ${e.message}`, 'warning');
@@ -2516,7 +3102,20 @@ function renderItemCost(item, idx) {
     `<li><span>${esc(s.name)}</span><code>${esc(s.formula)}</code><b>${s.area_m2.toFixed(2)} m²</b></li>`
   ).join('');
 
+  // What the sheet chose for each role and why — shown as a compact line so a PM can see
+  // the material without opening the Advanced overrides. This is the "materials from the
+  // sheet" made visible.
+  const chosenLine = (item.materials_chosen || []).length ? `
+    <div class="est-chosen">
+      ${item.materials_chosen.map(m => `
+        <span class="est-chosen-item" title="${esc(m.reason)}">
+          <b>${esc(m.role)}</b> ${esc(m.description)}
+          ${m.overridden ? '<span class="est-chip est-chip-quiet">yours</span>' : ''}
+        </span>`).join('')}
+    </div>` : '';
+
   return `
+    ${chosenLine}
     <div class="est-area-strip">
       <ul class="est-surfaces">${surfaceRows}</ul>
       <div class="est-area-math">

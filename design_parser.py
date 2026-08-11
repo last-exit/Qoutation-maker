@@ -22,6 +22,8 @@ import fitz  # PyMuPDF
 from PIL import Image as PILImage
 
 import image_tools
+import page_geometry
+import shape_detect
 
 SUPPORTED_PDF = {".pdf"}
 SUPPORTED_RASTER = {".png", ".jpg", ".jpeg", ".bmp", ".webp"}
@@ -236,6 +238,17 @@ def _detect_cutouts(spans):
     return cutouts
 
 
+# A usable name has at least three letters in a row. OCR on a raster drawing throws up
+# runs like "—=s\" and "50.0cm" that pass every other filter — not pure dimensions, not
+# boilerplate — yet are meaningless as an item name. Requiring a real word rejects them and
+# lets the sheet title stand in instead.
+_MEANINGFUL_LABEL = re.compile(r"[A-Za-z]{3,}")
+
+
+def _is_meaningful_label(text):
+    return bool(_MEANINGFUL_LABEL.search(text or ""))
+
+
 def _pick_title(spans):
     """The drawing's own name for the thing, taken as the largest non-boilerplate text."""
     candidates = []
@@ -246,6 +259,8 @@ def _pick_title(spans):
         if TITLE_NOISE.match(text):
             continue
         if re.fullmatch(r"[\d\s.,:x×/-]+", text):  # pure dimension strings
+            continue
+        if not _is_meaningful_label(text):
             continue
         size = span.get("size", 0)
         lowered = text.lower()
@@ -420,17 +435,73 @@ def ocr_status():
     }
 
 
-def _run_ocr(pil_image):
-    """OCR at native resolution — deliberately no downsampling, since dimension text on a
-    drawing is small and the first thing lost when an image is scaled down."""
+# A drawing's dimension text is the smallest type on the sheet and often the palest. One
+# OCR pass at native resolution reads the sheet title confidently and drops most of the
+# callouts, which is exactly the failure this deck showed: seven callouts on the page, one
+# recovered. These passes are unioned, not raced — each finds tokens the other misses.
+#
+# `upscale` is the important one. Recognisers are trained on text tens of pixels tall; a
+# 12 px callout on a 3D render is below that floor, and enlarging it before recognition
+# costs a second and roughly triples recall on this kind of page.
+_OCR_PASSES = (
+    {"name": "native", "upscale": 1.0, "contrast": False},
+    {"name": "upscaled", "upscale": 3.0, "contrast": True},
+)
+
+# Upscaling is capped so a large sheet cannot blow memory: 3x of an already-large render is
+# no better than 3x of a downscaled one for text this size.
+_OCR_MAX_SIDE_PX = 4200
+
+
+# Text that reads as a measurement, used to decide whether a second OCR pass is worth its
+# time. Deliberately loose — this only gates an optimisation, so a near-miss like "120cm"
+# with a stray character still counts as a callout worth having.
+_LOOKS_LIKE_DIMENSION = re.compile(r"\d\s*(?:mm|cm|m)\b|\d{3,}", re.IGNORECASE)
+
+
+def _dimension_like(tokens):
+    """How many collected tokens look like a dimension callout."""
+    return sum(1 for t in tokens if _LOOKS_LIKE_DIMENSION.search(t.get("text") or ""))
+
+
+def _prepare_for_ocr(pil_image, upscale, contrast):
+    """Scaled and contrast-normalised copy of a page for one OCR pass."""
+    image = pil_image
+    if contrast:
+        # Dimension lines and their text are near-black; the shaded render behind them is
+        # mid-grey. A hard stretch pushes those apart instead of letting the recogniser
+        # decide, which is what loses pale callouts over a grey solid.
+        from PIL import ImageOps
+        image = ImageOps.autocontrast(image.convert("L"), cutoff=2)
+
+    if upscale and upscale != 1.0:
+        width, height = image.size
+        target = (int(width * upscale), int(height * upscale))
+        if max(target) > _OCR_MAX_SIDE_PX:
+            factor = _OCR_MAX_SIDE_PX / float(max(target))
+            target = (max(1, int(target[0] * factor)), max(1, int(target[1] * factor)))
+        if target[0] > width:
+            image = image.resize(target, PILImage.LANCZOS)
+
+    return image
+
+
+def _ocr_tokens(pil_image):
+    """Text tokens with their pixel boxes, unioned over several passes.
+
+    Returns (tokens, status). Each token is {text, bbox, confidence, pass}, with `bbox` in
+    the coordinate space of the image handed in — every downstream stage needs that box to
+    tie a callout to the object it measures, and the previous `detail=0` call threw it away.
+    """
     global _ocr_reader, _ocr_checked, _ocr_init_error
     status = ocr_status()
     if not status["available"]:
-        return "", status
+        return [], status
 
+    collected = []
     try:
         if status["backend"] == "easyocr":
-            import easyocr
+            import easyocr  # noqa: F401
             import numpy as np
             if _ocr_reader is None and not _ocr_checked:
                 _ocr_checked = True
@@ -443,18 +514,149 @@ def _run_ocr(pil_image):
                     # retry on every subsequent page.
                     _ocr_init_error = str(exc)
             if _ocr_reader is None:
-                return "", {
+                return [], {
                     "available": False, "backend": "easyocr",
                     "hint": f"OCR backend failed to start: {_ocr_init_error}",
                 }
-            results = _ocr_reader.readtext(np.array(pil_image.convert("RGB")), detail=0)
-            return "\n".join(results), status
 
-        import pytesseract
-        return pytesseract.image_to_string(pil_image), status
+            # The passes are adaptive, not unconditional. Reading a full-resolution drawing
+            # page costs ~15 s; the upscaled second pass costs ~35 s more. Running both on
+            # every page of a 25-page deck is 20 minutes of a spinner, which is what made
+            # the app look frozen. The second pass only earns its cost when the first came
+            # up short, so it runs then and not otherwise.
+            #
+            # Downscaling is deliberately never used to save time: at 2000 px this page's
+            # "435.0 cm" reads as "4360cin". Full resolution or nothing.
+            for spec in _OCR_PASSES:
+                if spec["upscale"] != 1.0 and _dimension_like(collected) >= 2:
+                    break        # the plain pass already found the callouts
+                prepared = _prepare_for_ocr(pil_image, spec["upscale"], spec["contrast"])
+                ratio = pil_image.size[0] / float(prepared.size[0] or 1)
+                try:
+                    results = _ocr_reader.readtext(
+                        np.array(prepared.convert("RGB")), detail=1)
+                except Exception:
+                    continue
+                for box, text, confidence in results:
+                    xs = [point[0] for point in box]
+                    ys = [point[1] for point in box]
+                    collected.append({
+                        "text": (text or "").strip(),
+                        "bbox": (min(xs) * ratio, min(ys) * ratio,
+                                 max(xs) * ratio, max(ys) * ratio),
+                        "confidence": float(confidence or 0.0),
+                        "pass": spec["name"],
+                    })
+
+        else:
+            import pytesseract
+            from pytesseract import Output
+            for spec in _OCR_PASSES:
+                prepared = _prepare_for_ocr(pil_image, spec["upscale"], spec["contrast"])
+                ratio = pil_image.size[0] / float(prepared.size[0] or 1)
+                try:
+                    data = pytesseract.image_to_data(prepared, output_type=Output.DICT)
+                except Exception:
+                    continue
+                for index, text in enumerate(data.get("text", [])):
+                    text = (text or "").strip()
+                    if not text:
+                        continue
+                    try:
+                        confidence = float(data["conf"][index])
+                    except (KeyError, ValueError, TypeError):
+                        confidence = -1.0
+                    left, top = data["left"][index], data["top"][index]
+                    width, height = data["width"][index], data["height"][index]
+                    collected.append({
+                        "text": text,
+                        "bbox": (left * ratio, top * ratio,
+                                 (left + width) * ratio, (top + height) * ratio),
+                        "confidence": confidence / 100.0 if confidence >= 0 else 0.0,
+                        "pass": spec["name"],
+                    })
+
     except Exception as exc:
-        return "", {"available": False, "backend": status.get("backend"),
+        return [], {"available": False, "backend": status.get("backend"),
                     "hint": f"OCR backend failed: {exc}"}
+
+    return _dedupe_tokens(collected), status
+
+
+def _dedupe_tokens(tokens):
+    """Merges the same physical token found by more than one pass.
+
+    Two reads are the same token when their boxes substantially overlap. The higher
+    confidence wins, so the upscaled pass — which is usually right about small text —
+    replaces a native-resolution misread of the same callout rather than duplicating it.
+    """
+    kept = []
+    for token in sorted(tokens, key=lambda t: -t.get("confidence", 0.0)):
+        if not token["text"]:
+            continue
+        duplicate = False
+        for existing in kept:
+            if _box_overlap_ratio(token["bbox"], existing["bbox"]) > 0.5:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(token)
+
+    # Reading order keeps the assembled text sensible for the title and keyword passes.
+    kept.sort(key=lambda t: (round(t["bbox"][1], -1), t["bbox"][0]))
+    return kept
+
+
+def _box_overlap_ratio(a, b):
+    """Intersection over the smaller of two boxes."""
+    overlap_w = min(a[2], b[2]) - max(a[0], b[0])
+    overlap_h = min(a[3], b[3]) - max(a[1], b[1])
+    if overlap_w <= 0 or overlap_h <= 0:
+        return 0.0
+    smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    return (overlap_w * overlap_h) / smaller if smaller > 0 else 0.0
+
+
+def _run_ocr(pil_image):
+    """Plain text for the title/keyword passes. Kept for callers that want only text."""
+    tokens, status = _ocr_tokens(pil_image)
+    return "\n".join(t["text"] for t in tokens), status
+
+
+# Why a page produced no dimensions. The old code collapsed every cause into one string —
+# "drawing gave no usable value" — which blames the drawing even when the real reason is
+# that no text reader is installed on the machine. A PM reading that has no idea the fix is
+# a pip install, so they retype every number on a 25-page deck instead. Each cause now
+# carries its own wording and, where there is one, the command that fixes it.
+READ_STATE_NO_READER = "no_reader"        # nothing installed to read a raster page
+READ_STATE_READER_FAILED = "reader_failed"  # installed, but it errored (e.g. model download)
+READ_STATE_NOTHING_FOUND = "nothing_found"  # it ran and genuinely found no text
+READ_STATE_OK = "ok"
+
+
+def _read_state(status):
+    """Classifies why OCR yielded nothing, from the status `_ocr_tokens` returned."""
+    if status.get("available"):
+        return READ_STATE_NOTHING_FOUND
+    hint = status.get("hint") or ""
+    # A backend that is present but failed to start reports itself through `hint` while
+    # still being unavailable — that is a broken install, not a missing one, and the fix
+    # is different.
+    if status.get("backend") or "failed" in hint.lower():
+        return READ_STATE_READER_FAILED
+    return READ_STATE_NO_READER
+
+
+def read_state_message(state, hint=""):
+    """What to tell the PM on a page that produced no dimensions."""
+    if state == READ_STATE_NO_READER:
+        return ("No text reader is installed, so nothing could be read from this drawing. "
+                "Install one with `pip install easyocr`, or type the dimensions below.")
+    if state == READ_STATE_READER_FAILED:
+        return (f"The text reader could not start ({hint or 'unknown error'}). "
+                f"It needs to download its model once, which requires internet. "
+                f"Type the dimensions below in the meantime.")
+    return "Nothing readable was found on this sheet — type the dimensions below."
 
 
 # --- Page builders -------------------------------------------------------------------------
@@ -493,10 +695,189 @@ def _reject_envelope_cutouts(cutouts, assigned, warnings):
     return kept
 
 
-def _build_page(source_file, page_number, page_count, thumbnail, spans, raw_text,
-                width_px, height_px, text_source, warnings=None):
-    """Assembles one parsed drawing page into the shape the UI and calculators consume."""
-    warnings = list(warnings or [])
+# --- Element decomposition ----------------------------------------------------------------
+# A drawing sheet is rarely one item. A zone render carries a counter, a tower, a portal and
+# the walls behind them, each with its own callouts. The single-item model that used to live
+# here could only ever return one of those, and picked it by taking the two largest numbers
+# anywhere on the page — so a sheet with eight elements produced one row built from two
+# dimensions that usually belonged to two different objects.
+#
+# These functions turn attached dimensions (see page_geometry.measure) into one element per
+# cluster. They are deliberately conservative: an element is only produced where the drawing
+# actually dimensioned something. Shapes nobody measured are counted and reported, never
+# invented, because a fabricated element costs more than a missing one.
+
+def _dimension_tokens(tokens):
+    """The subset of text tokens that read as a dimension, with metres attached."""
+    found = []
+    for token in tokens or []:
+        text = (token.get("text") or "").strip()
+        if not text:
+            continue
+        dims = extract_dimensions(text)
+        if not dims:
+            continue
+        # A token is one callout: take its first reading rather than treating a token like
+        # "1200 x 600" as two separate measured spans.
+        best = dims[0]
+        meters = float(best.get("meters") or 0.0)
+        if meters <= 0:
+            continue
+        found.append({
+            "text": text,
+            "bbox": token.get("bbox"),
+            "meters": meters,
+            "assumed_unit": bool(best.get("assumed_unit")),
+            "confidence": token.get("confidence", 0.0),
+        })
+    return found
+
+
+def _label_for_cluster(cluster_box, tokens):
+    """The nearest piece of non-dimension text — the drawing's own name for the object."""
+    cx = (cluster_box[0] + cluster_box[2]) / 2.0
+    cy = (cluster_box[1] + cluster_box[3]) / 2.0
+
+    best, best_distance = None, None
+    for token in tokens or []:
+        text = (token.get("text") or "").strip()
+        bbox = token.get("bbox")
+        if not text or not bbox or len(text) < 3:
+            continue
+        if re.fullmatch(r"[\d\s.,:x×/-]+(?:\s*(mm|cm|m))?", text, re.IGNORECASE):
+            continue
+        if TITLE_NOISE.match(text):
+            continue
+        if not _is_meaningful_label(text):
+            continue
+        tx = (bbox[0] + bbox[2]) / 2.0
+        ty = (bbox[1] + bbox[3]) / 2.0
+        distance = ((tx - cx) ** 2 + (ty - cy) ** 2) ** 0.5
+        if best_distance is None or distance < best_distance:
+            best, best_distance = text, distance
+    return best
+
+
+def _shape_for_cluster(cluster_box, arcs, px_per_m):
+    """Whether the object in this box is drawn as a curve, and how deep the curve is.
+
+    The arc comes from the PDF's own vector path, so the rise is measured rather than
+    estimated — and dividing it by the cluster's local pixels-per-metre turns it straight
+    into the sagitta the pricing model asks for. This is the one place the estimator can
+    know a wall is curved without a human saying so.
+    """
+    if not arcs or px_per_m <= 0:
+        return "flat", {}
+
+    best = None
+    for arc in arcs:
+        box = arc.get("bbox")
+        if not box:
+            continue
+        if (box[2] < cluster_box[0] or box[0] > cluster_box[2]
+                or box[3] < cluster_box[1] or box[1] > cluster_box[3]):
+            continue
+        if best is None or arc["chord_px"] > best["chord_px"]:
+            best = arc
+
+    if best is None or best["chord_px"] <= 0:
+        return "flat", {}
+
+    sagitta_m = best["sagitta_px"] / px_per_m
+    chord_m = best["chord_px"] / px_per_m
+    if chord_m <= 0 or sagitta_m <= 0:
+        return "flat", {}
+
+    # A barely-bowed line is a straight edge with drawing tolerance on it, not a curve.
+    if sagitta_m / chord_m < 0.02:
+        return "flat", {}
+
+    return "curved", {"sagitta_m": round(sagitta_m, 3)}
+
+
+def _elements_from_clusters(clusters, tokens, arcs, raw_text, page_kind, warnings):
+    """One element per cluster of attached dimensions."""
+    elements = []
+
+    for index, group in enumerate(clusters):
+        spans = group["spans"]
+        box = group["bbox"]
+
+        horizontals = [s["value_m"] for s in spans if s["axis"] == "h"]
+        verticals = [s["value_m"] for s in spans if s["axis"] == "v"]
+        if not horizontals and not verticals:
+            continue
+
+        # The largest run on each axis is the object's overall size; smaller callouts in
+        # the same cluster are its internal divisions (shelf pitches, a plinth height).
+        length_m = round(max(horizontals), 3) if horizontals else 0.0
+        height_m = round(max(verticals), 3) if verticals else 0.0
+
+        scales = [s["px_per_m"] for s in spans if s.get("px_per_m", 0) > 0]
+        px_per_m = sorted(scales)[len(scales) // 2] if scales else 0.0
+
+        label = _label_for_cluster(box, tokens)
+
+        # Classify from this element's *own* label. On a page holding a tower and a portal,
+        # matching against the whole sheet's text gives every element the same type —
+        # whichever keyword appears first — so a display tower sitting beside an "Entrance
+        # Arch" label silently becomes an arch itself.
+        #
+        # The sheet-wide text is only a safe fallback when the page turned out to hold one
+        # element, because then there is nothing else on it for a keyword to belong to.
+        item_type, matched = classify_item_type(label or "")
+        if matched is None and len(clusters) == 1:
+            item_type, matched = classify_item_type(raw_text)
+
+        shape, geometry = _shape_for_cluster(box, arcs, px_per_m)
+
+        # Both axes measured is a genuinely well-described object. One axis means the PM
+        # still has a field to fill, and the UI must say which.
+        if horizontals and verticals:
+            confidence = "medium"
+        else:
+            confidence = "low"
+
+        element = {
+            "id": f"e{index + 1}",
+            "label": label or f"Element {index + 1}",
+            "item_type": item_type,
+            "matched_keyword": matched,
+            "shape": shape,
+            "length_m": length_m,
+            "height_m": height_m,
+            "depth_m": 0.0,
+            "faces": 1,
+            "quantity": 1,
+            "cutouts": [],
+            "bbox_px": [round(v, 1) for v in box],
+            "confidence": confidence,
+            "assumed_unit": any(s.get("assumed_unit") for s in spans),
+            "source_text": ", ".join(s["token"] for s in spans[:4]),
+            "px_per_m": round(px_per_m, 2),
+            "provenance": [
+                {"value_m": s["value_m"], "axis": s["axis"], "token": s["token"],
+                 "page_kind": page_kind}
+                for s in spans
+            ],
+        }
+        element.update(geometry)
+        elements.append(element)
+
+    # Biggest first: the PM reads the stand's main structure before its details.
+    elements.sort(key=lambda e: -(e["length_m"] * max(e["height_m"], 0.01)))
+    for position, element in enumerate(elements, start=1):
+        element["id"] = f"e{position}"
+    return elements
+
+
+def _legacy_element(spans, raw_text, warnings):
+    """The original whole-page reading, used when no dimension could be attached.
+
+    This is the safety net, and it matters: a page whose callouts sit on oblique leaders,
+    or which has no detectable linework at all, still parses exactly as it did before this
+    feature existed. Decomposition adds elements — it never removes the fallback.
+    """
     title = _pick_title(spans)
     item_type, matched = classify_item_type(f"{title or ''} {raw_text}")
     dimensions = extract_dimensions(raw_text)
@@ -504,7 +885,113 @@ def _build_page(source_file, page_number, page_count, thumbnail, spans, raw_text
     _apply_labelled_dimensions(raw_text, assigned)
     cutouts = _reject_envelope_cutouts(_detect_cutouts(spans), assigned, warnings)
 
-    label = title or f"{Path(source_file).stem} - page {page_number}"
+    return {
+        "id": "e1",
+        "label": title or "",
+        "item_type": item_type,
+        "matched_keyword": matched,
+        "shape": "flat",
+        "length_m": assigned["length_m"],
+        "height_m": assigned["height_m"],
+        "depth_m": assigned["depth_m"],
+        "faces": 1,
+        "quantity": 1,
+        "cutouts": cutouts,
+        "bbox_px": None,
+        "confidence": assigned["confidence"],
+        "assumed_unit": assigned.get("assumed_unit", False),
+        "source_text": assigned.get("source_text", ""),
+        "px_per_m": 0.0,
+        "provenance": [],
+    }, dimensions
+
+
+def _build_page(source_file, page_number, page_count, thumbnail, spans, raw_text,
+                width_px, height_px, text_source, warnings=None,
+                tokens=None, segments=None, arcs=None,
+                read_state=READ_STATE_OK, page_image=None):
+    """Assembles one parsed drawing page into the shape the UI and calculators consume."""
+    warnings = list(warnings or [])
+
+    page_kind, page_detail = page_geometry.classify_page(
+        segments or [], page_size=(width_px, height_px))
+
+    elements = []
+    unattached_count = 0
+    if tokens and segments:
+        dimension_tokens = _dimension_tokens(tokens)
+        measured, unattached = page_geometry.measure(
+            dimension_tokens, segments, (width_px, height_px))
+        unattached_count = len(unattached)
+        if measured:
+            clusters = page_geometry.cluster(measured)
+            elements = _elements_from_clusters(
+                clusters, tokens, arcs, raw_text, page_kind, warnings)
+
+    # The legacy reading is always computed — its dimension list feeds the UI either way —
+    # but its warnings only belong to the page when it is the reading actually used. On a
+    # decomposed page its envelope is meaningless, and complaints measured against it would
+    # be noise at best and wrong at worst.
+    legacy_warnings = []
+    legacy, dimensions = _legacy_element(spans, raw_text, legacy_warnings)
+    if not elements:
+        warnings.extend(legacy_warnings)
+    if not elements:
+        # Nothing could be attached to the drawing's own geometry, so fall back to the
+        # whole-page reading rather than returning an empty sheet.
+        elements = [legacy]
+        if unattached_count:
+            warnings.append(
+                f"{unattached_count} dimension(s) found but none could be tied to a "
+                f"line on the drawing — read as a single item. Check the values."
+            )
+    else:
+        if unattached_count:
+            warnings.append(
+                f"{unattached_count} dimension(s) could not be tied to an object and are "
+                f"not included in any item below."
+            )
+        # Cutouts are detected against the sheet as a whole, so a decomposed page has no
+        # way to know which element a TV recess belongs to. Dropping them would quietly
+        # remove real deductions from the quote, so they are carried on the largest
+        # element — which is where a screen or niche usually is — and the PM is told, by
+        # name, that the assignment is a guess they should check.
+        #
+        # They are re-validated against that element's envelope rather than the legacy
+        # whole-page one. The difference matters: a sheet whose only dimension pair is the
+        # opening's own "600 x 400" gives the legacy reading an envelope of exactly that,
+        # so the envelope guard would throw the opening away as a restatement of a size
+        # that was never the item's to begin with.
+        raw_cutouts = _detect_cutouts(spans)
+        if raw_cutouts:
+            kept = _reject_envelope_cutouts(raw_cutouts, elements[0], warnings)
+            if kept:
+                elements[0]["cutouts"] = kept
+                names = ", ".join(c.get("label", "opening") for c in kept)
+                warnings.append(
+                    f"Opening(s) found on this sheet ({names}) but not tied to one item — "
+                    f"put on '{elements[0]['label']}'. Move them if they belong elsewhere."
+                )
+
+    # `label` on an element is the drawing's own word for it where there was one; falling
+    # back to the sheet name keeps every row identifiable in the quotation.
+    sheet_name = _pick_title(spans) or f"{Path(source_file).stem} - page {page_number}"
+    for element in elements:
+        if not element.get("label"):
+            element["label"] = sheet_name
+
+    # Shape comes from the drawing's pixels where OpenCV is available. Done after the
+    # elements exist because it needs each one's box and local scale; a curve found without
+    # a scale gets its shape but not its rise, so the item still asks for the number that
+    # decides its cost rather than inventing one.
+    shapes_found = shape_detect.apply_to_elements(page_image, elements)
+    if shapes_found:
+        warnings.append(
+            f"{shapes_found} item(s) look curved or circular on this drawing and have been "
+            f"set that way. Change the Shape on any that are wrong.")
+
+    cutouts = elements[0].get("cutouts") or []
+    label = elements[0].get("label") or sheet_name
 
     return {
         "id": f"{Path(source_file).name}::p{page_number}",
@@ -517,51 +1004,80 @@ def _build_page(source_file, page_number, page_count, thumbnail, spans, raw_text
         "height_px": height_px,
         "text_source": text_source,          # "vector" | "ocr" | "none"
         "raw_text": raw_text[:4000],
+        "page_kind": page_kind,              # "flat" | "perspective"
+        "page_kind_detail": page_detail,
+        # Why this page produced no dimensions, so the UI can say "no reader installed"
+        # rather than blaming the drawing. See `read_state_message`.
+        "read_state": read_state,
+        "read_message": ("" if read_state == READ_STATE_OK
+                         else read_state_message(read_state)),
+        "elements": elements,
+        # `detected` is the first element, kept so any consumer written against the
+        # one-item-per-page shape keeps working while the UI moves over to `elements`.
         "detected": {
             "label": label,
-            "item_type": item_type,
-            "matched_keyword": matched,
-            "length_m": assigned["length_m"],
-            "height_m": assigned["height_m"],
-            "depth_m": assigned["depth_m"],
+            "item_type": elements[0]["item_type"],
+            "matched_keyword": elements[0].get("matched_keyword"),
+            "length_m": elements[0]["length_m"],
+            "height_m": elements[0]["height_m"],
+            "depth_m": elements[0]["depth_m"],
             "faces": 1,
             "quantity": 1,
             "cutouts": cutouts,
-            "confidence": assigned["confidence"],
-            "assumed_unit": assigned.get("assumed_unit", False),
-            "source_text": assigned.get("source_text", ""),
+            "confidence": elements[0]["confidence"],
+            "assumed_unit": elements[0].get("assumed_unit", False),
+            "source_text": elements[0].get("source_text", ""),
         },
         "dimensions_found": dimensions[:40],
         "warnings": warnings or [],
     }
 
 
-def _parse_pdf(path, warnings):
-    """One entry per page of a (possibly 25-page) drawing deck."""
+def _parse_pdf(path, warnings, page_start=0, page_count=None):
+    """One entry per page of a (possibly 25-page) drawing deck.
+
+    `page_start` / `page_count` parse a slice rather than the whole file. OCR costs 15-20
+    seconds a page, so a deck parsed in one call leaves the UI with nothing to show for
+    minutes; parsing a few pages at a time lets each one appear as it is read, and lets the
+    PM start correcting page 1 while page 12 is still being processed.
+    """
     pages = []
     document = fitz.open(str(path))
     try:
         total = document.page_count
         limit = min(total, MAX_PAGES_PER_FILE)
-        if total > limit:
+        if total > limit and page_start == 0:
             warnings.append(
                 f"{Path(path).name}: {total} pages found, first {limit} parsed "
                 f"(MAX_PAGES_PER_FILE)."
             )
 
-        for index in range(limit):
+        stop = limit if page_count is None else min(limit, page_start + int(page_count))
+        for index in range(max(0, int(page_start)), stop):
             page = document.load_page(index)
 
             # Spans carry font size, which is what distinguishes a sheet title from a note.
+            # Their bounding boxes are what tie a callout to the object it measures, so they
+            # are scaled into the same pixel space as the render and kept as tokens.
             spans = []
+            tokens = []
             try:
                 layout = page.get_text("dict")
                 for block in layout.get("blocks", []):
                     for line in block.get("lines", []):
                         for span in line.get("spans", []):
                             text = (span.get("text") or "").strip()
-                            if text:
-                                spans.append({"text": text, "size": span.get("size", 0)})
+                            if not text:
+                                continue
+                            spans.append({"text": text, "size": span.get("size", 0)})
+                            box = span.get("bbox")
+                            if box:
+                                tokens.append({
+                                    "text": text,
+                                    "bbox": tuple(v * PDF_RENDER_SCALE for v in box),
+                                    "confidence": 1.0,     # vector text is not a guess
+                                    "pass": "vector",
+                                })
             except Exception as exc:
                 warnings.append(f"{Path(path).name} p{index + 1}: text layout unreadable ({exc}).")
 
@@ -582,22 +1098,38 @@ def _parse_pdf(path, warnings):
 
             # A page with no vector text is a scanned/exported raster inside a PDF wrapper.
             page_warnings = []
+            read_state = READ_STATE_OK
             if len(raw_text.strip()) < 4:
-                ocr_text, status = _run_ocr(image)
-                if ocr_text.strip():
-                    raw_text = ocr_text
+                ocr_tokens, status = _ocr_tokens(image)
+                if ocr_tokens:
+                    tokens = ocr_tokens
+                    raw_text = "\n".join(t["text"] for t in ocr_tokens)
+                    spans = [{"text": t["text"], "size": 12} for t in ocr_tokens]
                     text_source = "ocr"
                 else:
                     text_source = "none"
+                    read_state = _read_state(status)
                     page_warnings.append(
-                        status.get("hint")
-                        or "No text layer on this page and OCR returned nothing — "
-                           "enter dimensions manually."
-                    )
+                        read_state_message(read_state, status.get("hint", "")))
+
+            # Vector linework survives even when a page's text has been outlined, which is
+            # the common SketchUp export and the case that reads as "OCR". Its endpoints are
+            # exact, so it is always preferred; the raster scan is only for a page that
+            # genuinely carries no vector paths at all.
+            segments = page_geometry.segments_from_pdf_page(page, scale=PDF_RENDER_SCALE)
+            arcs = page_geometry.curves_from_pdf_page(page, scale=PDF_RENDER_SCALE)
+            if not segments:
+                # Only when the page carries no vector paths at all. Any real linework is
+                # exact and beats a pixel scan outright — a simple elevation may hold just
+                # a handful of lines, and preferring the scan over them turns measured
+                # endpoints back into thresholded guesses.
+                segments = page_geometry.segments_from_image(image)
 
             pages.append(_build_page(
                 path, index + 1, total, thumbnail, spans, raw_text,
                 width_px, height_px, text_source, page_warnings,
+                tokens=tokens, segments=segments, arcs=arcs,
+                read_state=read_state, page_image=image,
             ))
     finally:
         document.close()
@@ -615,23 +1147,169 @@ def _parse_raster(path, warnings):
     preview.thumbnail(PREVIEW_MAX_PX, PILImage.LANCZOS)
     thumbnail = image_tools.pil_to_base64(preview)
 
-    raw_text, status = _run_ocr(native)
+    tokens, status = _ocr_tokens(native)
+    raw_text = "\n".join(t["text"] for t in tokens)
     page_warnings = []
+    read_state = READ_STATE_OK
     if raw_text.strip():
         text_source = "ocr"
     else:
         text_source = "none"
-        page_warnings.append(
-            status.get("hint") or "OCR found no text — enter dimensions manually."
-        )
+        read_state = _read_state(status)
+        page_warnings.append(read_state_message(read_state, status.get("hint", "")))
 
-    spans = [{"text": line.strip(), "size": 12}
-             for line in raw_text.splitlines() if line.strip()]
+    spans = [{"text": t["text"], "size": 12} for t in tokens]
+    segments = page_geometry.segments_from_image(native)
 
     return [_build_page(
         path, 1, 1, thumbnail, spans, raw_text,
         width_px, height_px, text_source, page_warnings,
+        tokens=tokens, segments=segments, arcs=None,
+        read_state=read_state, page_image=native,
     )]
+
+
+# --- Cross-page reconciliation -------------------------------------------------------------
+
+def _signature(element):
+    """A shape fingerprint used to recognise the same object drawn on another sheet.
+
+    Rounded to 5 cm because the same tower dimensioned on an elevation and measured off a
+    perspective will not agree to the millimetre, and demanding that they do would defeat
+    the whole purpose.
+    """
+    return (
+        element.get("item_type"),
+        element.get("shape"),
+        round(float(element.get("length_m") or 0.0) / 0.05),
+        round(float(element.get("height_m") or 0.0) / 0.05),
+    )
+
+
+def _normalised_label(element):
+    return re.sub(r"[^a-z0-9]+", " ", (element.get("label") or "").lower()).strip()
+
+
+def reconcile(pages):
+    """Links elements that appear on more than one sheet, and fills gaps between them.
+
+    Two things happen here, and the second is the one that makes splitting a deck safe.
+
+    **Cross-fill.** A tower dimensioned properly on an elevation and only partly readable
+    on a perspective gets the elevation's number, with the source page recorded so the PM
+    can see where it came from.
+
+    **De-duplication.** The same object drawn on four sheets must be quoted once. Splitting
+    pages into elements without this turns a 25-page deck into a systematic over-quote,
+    which is a worse failure than the single wrong row it replaced. Duplicates are marked
+    and excluded by default, never deleted — the PM can include any of them again, and the
+    UI says which sheet the original was on.
+    """
+    by_signature = {}
+    by_label = {}
+
+    for page in pages:
+        for element in page.get("elements") or []:
+            element.setdefault("include", True)
+            element["duplicate_of"] = None
+
+            label = _normalised_label(element)
+            if label and len(label) > 3:
+                by_label.setdefault(label, []).append((page, element))
+
+    # Cross-fill first, so a gap-filled element can then be recognised as a duplicate.
+    for label, entries in by_label.items():
+        donors = [(p, e) for p, e in entries
+                  if e["length_m"] > 0 and e["height_m"] > 0]
+        if not donors:
+            continue
+        # Prefer a flat page: its scale is page-wide and its numbers are the trustworthy
+        # ones. That is the whole reason a mixed deck beats a deck of renders.
+        donors.sort(key=lambda pe: (pe[0].get("page_kind") != "flat",))
+        donor_page, donor = donors[0]
+
+        for page, element in entries:
+            if element is donor:
+                continue
+            filled = []
+            for field in ("length_m", "height_m", "depth_m"):
+                if float(element.get(field) or 0.0) <= 0 and float(donor.get(field) or 0.0) > 0:
+                    element[field] = donor[field]
+                    filled.append(field.replace("_m", ""))
+            if filled:
+                element["filled_from"] = {
+                    "page": donor_page.get("page_number"),
+                    "file": donor_page.get("file_name"),
+                    "fields": filled,
+                }
+                if element.get("confidence") in (None, "none"):
+                    element["confidence"] = "low"
+
+    # De-duplicate on the reconciled dimensions.
+    for page in pages:
+        for element in page.get("elements") or []:
+            if float(element.get("length_m") or 0.0) <= 0:
+                continue
+            signature = _signature(element)
+            first = by_signature.get(signature)
+            if first is None:
+                by_signature[signature] = (page, element)
+                continue
+            first_page, first_element = first
+            element["include"] = False
+            element["duplicate_of"] = {
+                "page": first_page.get("page_number"),
+                "file": first_page.get("file_name"),
+                "label": first_element.get("label"),
+            }
+
+    duplicates = sum(1 for p in pages for e in (p.get("elements") or [])
+                     if e.get("duplicate_of"))
+    return duplicates
+
+
+def page_count(path):
+    """How many pages a file will produce, without parsing any of them.
+
+    Cheap: a PDF reports its own count, and any raster file is a single page. Lets the UI
+    show real progress ("page 4 of 25") before the slow work starts.
+    """
+    path = Path(path)
+    if path.suffix.lower() not in SUPPORTED_PDF:
+        return 1
+    try:
+        document = fitz.open(str(path))
+        try:
+            return min(document.page_count, MAX_PAGES_PER_FILE)
+        finally:
+            document.close()
+    except Exception:
+        return 0
+
+
+def parse_page_range(path, start=0, count=1):
+    """Parses a slice of one file's pages.
+
+    Returns the same page dicts `parse_files` produces, minus cross-page reconciliation —
+    that needs every page and so is applied once at the end by `reconcile`.
+    """
+    path = Path(path)
+    warnings = []
+    if not path.exists():
+        return {"success": False, "error": "File not found.", "drawings": [], "warnings": []}
+    if path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        return {"success": False, "error": f"Unsupported type '{path.suffix}'.",
+                "drawings": [], "warnings": []}
+
+    try:
+        if path.suffix.lower() in SUPPORTED_PDF:
+            drawings = _parse_pdf(path, warnings, page_start=start, page_count=count)
+        else:
+            drawings = _parse_raster(path, warnings) if start == 0 else []
+    except Exception as exc:
+        return {"success": False, "error": str(exc), "drawings": [], "warnings": warnings}
+
+    return {"success": True, "drawings": drawings, "warnings": warnings}
 
 
 def parse_files(paths):
@@ -665,10 +1343,18 @@ def parse_files(paths):
         except Exception as exc:
             skipped.append({"file": path.name, "reason": str(exc)})
 
+    duplicates = reconcile(drawings)
+    if duplicates:
+        warnings.append(
+            f"{duplicates} element(s) appear on more than one sheet and are switched off "
+            f"so they are quoted once. Turn any of them back on if they are separate builds."
+        )
+
     return {
         "success": True,
         "drawings": drawings,
         "page_count": len(drawings),
+        "element_count": sum(len(p.get("elements") or []) for p in drawings),
         "warnings": warnings,
         "skipped": skipped,
         "ocr": ocr_status(),

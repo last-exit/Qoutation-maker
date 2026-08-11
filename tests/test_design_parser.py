@@ -217,3 +217,43 @@ def test_a_counter_stating_its_depth_now_prices_end_to_end():
 
     assert boq["needs_dimensions"] is False
     assert boq["factory_cost"] > 0
+
+
+# --- Why a page produced nothing -----------------------------------------------------------
+# One generic "drawing gave no usable value" hid the difference between a drawing with
+# nothing on it and a machine with no OCR reader installed. The second is a pip install away
+# from working, and a PM who is not told that retypes a whole deck by hand.
+
+class TestReadStateMessaging:
+    def test_a_missing_reader_says_so_and_gives_the_command(self):
+        state = dp._read_state({"available": False, "backend": None,
+                                "hint": "No OCR backend installed."})
+        assert state == dp.READ_STATE_NO_READER
+        message = dp.read_state_message(state)
+        assert "pip install easyocr" in message
+        assert "type the dimensions" in message.lower()
+
+    def test_a_broken_reader_is_told_apart_from_a_missing_one(self):
+        state = dp._read_state({"available": False, "backend": "easyocr",
+                                "hint": "OCR backend failed to start: model download"})
+        assert state == dp.READ_STATE_READER_FAILED
+        assert "could not start" in dp.read_state_message(state, "model download")
+
+    def test_a_working_reader_that_found_nothing_blames_neither(self):
+        state = dp._read_state({"available": True, "backend": "easyocr"})
+        assert state == dp.READ_STATE_NOTHING_FOUND
+        message = dp.read_state_message(state)
+        assert "install" not in message.lower()
+
+    def test_the_page_carries_the_reason_it_could_not_read(self, tmp_path):
+        """A blank PDF page has no text; the page must say why, not just stay silent."""
+        import fitz
+        doc = fitz.open()
+        doc.new_page(width=300, height=200)
+        target = str(tmp_path / "blank.pdf")
+        doc.save(target)
+        doc.close()
+
+        page = dp.parse_files([target])["drawings"][0]
+        assert page["read_state"] != dp.READ_STATE_OK
+        assert page["read_message"]

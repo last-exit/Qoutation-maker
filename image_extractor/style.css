@@ -1,0 +1,286 @@
+/* Standalone stylesheet. Dark like the quotation app it was carved out of, but written from
+   scratch: this window has one job and does not need 60 KB of quotation UI. */
+
+:root {
+  --bg: #0a0a0b;
+  --panel: #141416;
+  --panel-2: #1b1b1f;
+  --line: #26262b;
+  --text: #e8e8ea;
+  --muted: #8b8b93;
+  --accent: #4f8cff;
+  --warn: #f0b429;
+  --danger: #ff5c5c;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.hidden { display: none !important; }
+
+/* --- Top bar ------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.topbar h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+.sub { margin: 2px 0 0; color: var(--muted); font-size: 12.5px; }
+.topbar-actions { display: flex; gap: 8px; }
+
+main { padding: 20px 24px 48px; }
+
+/* --- Buttons ------------------------------------------------------------------------- */
+
+.btn {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--text);
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.btn:hover { background: #232329; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: #3d78e6; }
+.btn.ghost { background: transparent; }
+
+/* --- Drop zone ----------------------------------------------------------------------- */
+
+.dropzone {
+  border: 1.5px dashed var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 34px 20px;
+  text-align: center;
+  transition: border-color .15s ease, background .15s ease;
+}
+.dropzone.hover { border-color: var(--accent); background: #14161d; }
+.dropzone.working { opacity: .6; pointer-events: none; }
+.dropzone-inner { display: flex; flex-direction: column; gap: 6px; }
+.dz-title { font-size: 15px; font-weight: 600; }
+.dz-hint { color: var(--muted); font-size: 12.5px; letter-spacing: .02em; }
+
+/* --- Panels -------------------------------------------------------------------------- */
+
+.panel {
+  margin-top: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.panel h2 { margin: 0 0 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.panel.warn { border-color: #3a3116; background: #17140c; }
+.panel.warn ul { margin: 0; padding-left: 18px; color: var(--warn); font-size: 12.5px; }
+.panel.warn li { margin: 3px 0; }
+
+.queue-list { list-style: none; margin: 0; padding: 0; }
+.queue-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.queue-list li:last-child { border-bottom: 0; }
+.qname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qkind { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.qcount { color: var(--muted); font-variant-numeric: tabular-nums; }
+.queue-list li.skipped .qname { color: var(--danger); }
+.qreason { color: var(--muted); font-size: 12px; }
+
+/* --- Summary ------------------------------------------------------------------------- */
+
+.summary {
+  margin-top: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+}
+.counts { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.summary-actions { display: flex; gap: 8px; }
+
+/* --- Results ------------------------------------------------------------------------- */
+
+.grid {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.card { cursor: pointer; transition: border-color .15s ease, transform .12s ease; }
+.card:hover { border-color: #3a3a44; }
+.card.copying { opacity: .65; }
+.card.copied { border-color: var(--accent); }
+
+.thumb { position: relative; }
+
+.card img {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  background: #08080a;
+  display: block;
+}
+
+/* Visible on hover, and on the card that was just copied — an affordance nobody can find is
+   the same as not having one. */
+.card-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity .13s ease;
+}
+.card:hover .card-actions,
+.card:focus-within .card-actions { opacity: 1; }
+
+.card-btn {
+  border: 1px solid var(--line);
+  background: rgba(20, 20, 22, .92);
+  color: var(--text);
+  font-size: 11.5px;
+  padding: 4px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background .13s ease, border-color .13s ease;
+}
+.card-btn:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.card.copied .card-actions { opacity: 1; }
+.card.copied .js-copy {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.card.copied .js-copy::after { content: "ied"; }
+
+/* --- Viewer ---------------------------------------------------------------------------- */
+
+.viewer {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(6, 6, 8, .78);
+  z-index: 20;
+}
+.viewer.open { display: flex; }
+
+/* Sized to the picture, capped well short of the window — this is a closer look, not a
+   fullscreen takeover. */
+.viewer-panel {
+  display: flex;
+  flex-direction: column;
+  max-width: min(880px, 82vw);
+  max-height: 82vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+
+.viewer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+.viewer-meta { display: flex; flex-direction: column; min-width: 0; }
+.viewer-src { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-loc { font-size: 11.5px; color: var(--muted); }
+.viewer-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.viewer-count { color: var(--muted); font-size: 11.5px; margin-right: 4px; font-variant-numeric: tabular-nums; }
+.btn.small { padding: 5px 11px; font-size: 12px; border-radius: 8px; }
+
+.viewer-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #08080a;
+  overflow: auto;
+  padding: 10px;
+}
+.viewer-stage img {
+  max-width: 100%;
+  /* Leaves room for the bar inside the panel's own height cap. */
+  max-height: calc(82vh - 76px);
+  object-fit: contain;
+  display: block;
+}
+.card figcaption { padding: 9px 11px; display: flex; flex-direction: column; gap: 2px; }
+.src { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loc { font-size: 11.5px; color: var(--muted); }
+
+.empty {
+  margin-top: 40px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* --- Toast --------------------------------------------------------------------------- */
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translate(-50%, 20px);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  max-width: 78vw;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease, transform .18s ease;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { border-color: var(--danger); color: #ffbcbc; }

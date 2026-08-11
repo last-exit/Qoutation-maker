@@ -22,28 +22,48 @@ install died before the window appeared, while working perfectly on the develope
 CI found it the night before handover. Nothing here substitutes for running it where it
 will actually be used.
 
-## 2. Enable OCR (needed for PNG/JPG drawings)
+## 2. Enable OCR and shape detection (needed for PNG/JPG drawings)
 
 Vector PDFs read exactly and need nothing. Raster drawings — SketchUp exports, screenshots,
-photos of a printout — need OCR to read the dimension text.
+photos of a printout — need OCR to read the dimension text. Most real client decks are
+raster, so in practice this step matters.
+
+**Install easyocr.** It reads the callouts, and it brings OpenCV with it, which is what
+recognises curved walls and ring shelves. Without OpenCV every item comes out as a flat
+panel, and a curved wall priced flat is under-quoted.
 
 ```bat
-venv\Scripts\python.exe -m pip install pytesseract
-winget install --id UB-Mannheim.TesseractOCR -e
+venv\Scripts\python.exe -m pip install easyocr
 ```
 
-**Then close the terminal and open a new one.** The Tesseract installer adds itself to PATH
-only for processes started afterwards, so an already-open terminal or a running app will not
-find it. Confirm:
+Be ready for the size: this pulls roughly **2 GB** of torch wheels. On a slow connection it
+is a long install. Torch was deliberately removed from this project earlier to keep the
+install lean — easyocr brings it back, and that is the accepted trade for reading raster
+drawings and detecting shapes.
+
+**First parse needs internet.** easyocr downloads its detection model (~64 MB) the first
+time it runs. Do one parse while still on a good connection so the PM does not hit it later.
+If it fails, the app now says the reader could not start and why, rather than reporting the
+drawing as blank.
+
+Confirm:
 
 ```bat
 venv\Scripts\python.exe -c "import design_parser; print(design_parser.ocr_status())"
+venv\Scripts\python.exe -c "import shape_detect; print('shapes:', shape_detect.AVAILABLE)"
 ```
 
-Expect `{'available': True, 'backend': 'pytesseract'}`.
+Expect `{'available': True, 'backend': 'easyocr'}` and `shapes: True`.
 
-Without OCR nothing is priced wrongly — items missing dimensions are held back rather than
-quoted — but every raster drawing needs its numbers typed in by hand.
+**Lighter alternative.** `pip install pytesseract` plus
+`winget install --id UB-Mannheim.TesseractOCR -e` is far smaller and reads dimensions fine,
+but gives **no shape detection** — everything stays flat. If you use it, close the terminal
+and open a new one afterwards, because the Tesseract installer only adds itself to PATH for
+processes started later.
+
+Without any reader nothing is priced wrongly — items missing dimensions are held back rather
+than quoted — but every raster drawing needs its numbers typed in by hand. The app now says
+exactly that, with the install command, on the page that failed.
 
 ## 3. Download the search model while there is internet
 

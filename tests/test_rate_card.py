@@ -143,15 +143,16 @@ def test_search_respects_its_limit():
 # --- The shipped card itself -----------------------------------------------------------
 
 def test_the_real_rate_card_loads_and_prices_the_codes_the_estimator_uses():
-    """Guards the actual file the PM depends on: every material code the finish systems
-    and default build reference must exist, or the estimator raises mid-quote."""
+    """Guards the actual file the PM depends on: every finish role must resolve to a real
+    row on the sheet, or the estimator quietly leaves part of a finish uncosted."""
     card = rc.get_rate_card()
 
     assert len(card.items) > 0
     assert card.margin_pct >= 0
 
-    import calculators as calc
-    referenced = {c["code"] for system in calc.FINISH_SYSTEMS.values()
-                  for c in system["components"]}
-    missing = sorted(code for code in referenced if not card.has(code))
-    assert not missing, f"finish systems reference codes absent from the rate card: {missing}"
+    import materials
+    roles_used = {c["role"] for bundle in materials.FINISH_BUNDLES.values()
+                  for c in bundle["components"]}
+    unresolved = sorted(role for role in roles_used
+                        if materials.resolve(card, materials.FINISH_QUERIES[role]) is None)
+    assert not unresolved, f"finish roles the sheet cannot fill: {unresolved}"

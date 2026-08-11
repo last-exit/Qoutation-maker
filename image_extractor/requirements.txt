@@ -1,0 +1,23 @@
+# Runtime dependencies, pinned — same versions the quotation app upstairs runs on, so a
+# single shared virtualenv also works if you would rather not build a second one.
+#
+# Deliberately absent: chromadb, onnxruntime, tokenizers, numpy (no semantic search here),
+# cryptography (no encrypted backup), and everything to do with pricing or documents out.
+
+# --- UI shell ---------------------------------------------------------------------------
+pywebview==6.2.1
+pyobjc-core==11.1; sys_platform == 'darwin'
+pyobjc-framework-Cocoa==11.1; sys_platform == 'darwin'
+pyobjc-framework-WebKit==11.1; sys_platform == 'darwin'
+pywin32==311; sys_platform == 'win32'
+
+# --- Document reading --------------------------------------------------------------------
+openpyxl==3.1.5
+python-docx==1.2.0
+PyMuPDF==1.26.5
+Pillow==11.3.0
+
+# --- Tests ---------------------------------------------------------------------------------
+# Kept here rather than in a separate dev file: the suite is four files and the dependency
+# is 3 MB.
+pytest==8.4.2

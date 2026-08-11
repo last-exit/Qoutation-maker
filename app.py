@@ -30,6 +30,7 @@ from embedder import get_embedder
 import design_parser
 import calculators
 import rate_card
+import shop_config
 
 DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
 COLLECTION_NAME = "quotation_items"
@@ -1122,6 +1123,157 @@ class QuotationApi:
             return {"success": True, "paths": list(result)}
         except Exception as e:
             return {"success": False, "error": str(e)}
+
+    def search_materials(self, needle, limit=20):
+        """Rate-card rows matching `needle`, for the material picker on an item.
+
+        Backs the manual path: when a drawing gave no dimensions the PM names the material
+        themselves, and this is how they find it without leaving the estimator or opening
+        the CSV.
+        """
+        try:
+            card = rate_card.get_rate_card()
+            return {"success": True, "items": [
+                {"code": i.code, "description": i.description, "unit": i.unit,
+                 "cost": i.avg_cost, "category": i.category}
+                for i in card.search(needle, limit=limit)
+            ]}
+        except Exception as e:
+            return {"success": False, "error": str(e), "items": []}
+
+    def add_material(self, description, unit, cost, category="Uncategorized", code=""):
+        """Adds a material the PM typed to the rate card, so future drawings can use it.
+
+        Only called when they explicitly choose to save rather than use-once — a typed
+        price that silently became permanent would let one job's odd rate quietly reprice
+        every future quote.
+        """
+        try:
+            code = (code or "").strip().upper()
+            if not code:
+                # Derive a code from the description when the PM did not supply one:
+                # "MDF Plain 18mm" -> "MDF-PLA-18M". Shown for editing before saving, so
+                # this is a starting point rather than a decision made behind their back.
+                words = re.findall(r"[A-Za-z0-9]+", description or "")
+                parts = [w[:3].upper() for w in words[:3]] or ["MAT"]
+                code = "-".join(parts)
+            card = rate_card.add_rate_card_item(
+                code=code,
+                description=description or code,
+                unit=unit or "Unit",
+                avg_cost=cost,
+                category=category or "Uncategorized",
+            )
+            item = card.get(code)
+            return {"success": True, "item": {
+                "code": item.code, "description": item.description, "unit": item.unit,
+                "cost": item.avg_cost, "category": item.category}}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def save_fabrication_settings(self, updates):
+        """Writes the curved/ring shop constants the PM edited, and returns the new set.
+
+        These are deliberately editable rather than compiled in: how many skins go on a
+        curve and how much longer curved work takes are this workshop's figures, not
+        facts, and the defaults shipped here are trade practice until someone confirms
+        them. Returns the reloaded settings so the UI re-renders from what was saved
+        rather than from what it hoped was saved.
+        """
+        try:
+            values, problems = shop_config.save(dict(updates or {}))
+            return {"success": True, "fabrication": shop_config.describe(),
+                    "values": values, "problems": problems}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def reset_fabrication_settings(self):
+        """Puts every fabrication constant back to its shipped default."""
+        try:
+            defaults = {key: meta["value"] for key, meta in shop_config.DEFAULTS.items()}
+            shop_config.save(defaults)
+            return {"success": True, "fabrication": shop_config.describe()}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    # --- Page-by-page import -------------------------------------------------------
+    # Parsing a whole deck in one call means the PM stares at a spinner for minutes while
+    # OCR grinds through it. These three let the UI read one page at a time and show it
+    # immediately. Reconciliation still needs the complete set — a duplicate can only be
+    # spotted once both sheets are in — so the pages are held here and reconciled at the
+    # end, with only the resulting adjustments sent back rather than every page again.
+
+    def begin_design_import(self):
+        """Starts a page-by-page import, clearing anything held from a previous one."""
+        self._import_pages = []
+        return {"success": True}
+
+    def design_page_counts(self, paths):
+        """How many pages each file holds, so the UI can show real progress."""
+        try:
+            counts = []
+            for raw in paths or []:
+                counts.append({
+                    "path": str(raw),
+                    "name": Path(raw).name,
+                    "pages": design_parser.page_count(raw),
+                })
+            return {"success": True, "files": counts,
+                    "total_pages": sum(c["pages"] for c in counts)}
+        except Exception as e:
+            return {"success": False, "error": str(e), "files": [], "total_pages": 0}
+
+    def parse_design_pages(self, path, start=0, count=1):
+        """Parses a slice of one file and returns just those pages."""
+        try:
+            result = design_parser.parse_page_range(path, int(start), int(count))
+            if result.get("success"):
+                if not hasattr(self, "_import_pages"):
+                    self._import_pages = []
+                self._import_pages.extend(result["drawings"])
+            return result
+        except Exception as e:
+            return {"success": False, "error": str(e), "drawings": [], "warnings": []}
+
+    def finish_design_import(self):
+        """Reconciles the whole import and returns only what changed.
+
+        Cross-fill and de-duplication cannot run per page: an element is only a duplicate
+        once the sheet it repeats has also been read. Sending the reconciled pages back
+        would mean re-transferring every thumbnail, so only the per-element adjustments
+        travel — the browser already holds the rest.
+        """
+        try:
+            pages = getattr(self, "_import_pages", [])
+            duplicates = design_parser.reconcile(pages)
+
+            adjustments = []
+            for page in pages:
+                for element in page.get("elements") or []:
+                    if element.get("duplicate_of") or element.get("filled_from"):
+                        adjustments.append({
+                            "page_id": page.get("id"),
+                            "element_id": element.get("id"),
+                            "include": element.get("include", True),
+                            "duplicate_of": element.get("duplicate_of"),
+                            "filled_from": element.get("filled_from"),
+                            "length_m": element.get("length_m"),
+                            "height_m": element.get("height_m"),
+                            "depth_m": element.get("depth_m"),
+                        })
+
+            warnings = []
+            if duplicates:
+                warnings.append(
+                    f"{duplicates} element(s) appear on more than one sheet and are "
+                    f"switched off so they are quoted once. Turn any of them back on if "
+                    f"they are separate builds.")
+
+            self._import_pages = []
+            return {"success": True, "adjustments": adjustments, "warnings": warnings,
+                    "ocr": design_parser.ocr_status()}
+        except Exception as e:
+            return {"success": False, "error": str(e), "adjustments": [], "warnings": []}
 
     def parse_design_files(self, paths):
         """Parses selected drawings into per-page detected specs plus preview images."""
