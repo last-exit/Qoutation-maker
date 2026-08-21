@@ -14,12 +14,12 @@ Payment state (Unpaid / Partial / Paid) and overdue are computed, because they a
 money that has or has not arrived.
 """
 import json
-import os
 from datetime import datetime, timedelta
 
 import db
+import paths
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "invoices.db"))
+DB_FILE = str(paths.data_path("invoices.db"))
 
 # What a human decides about the document itself.
 INVOICE_STATUSES = ["Draft", "Sent", "Cancelled"]

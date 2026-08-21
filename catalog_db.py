@@ -16,13 +16,13 @@ essentially never matched and every quote recorded cost_price: None. Matching no
 a ladder — exact, then title-line, then containment — with semantic matching layered on top
 by the caller, which owns the embedding model.
 """
-import os
 import re
 from datetime import datetime
 
 import db
+import paths
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "catalog.db"))
+DB_FILE = str(paths.data_path("catalog.db"))
 
 _WS_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s]")

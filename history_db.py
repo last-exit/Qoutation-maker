@@ -18,13 +18,13 @@ base64. A two-line quote used to occupy 690 KB of this database, of which 690,01
 image and 106 bytes were quotation.
 """
 import json
-import os
 import re
 from datetime import datetime, timedelta
 
 import db
+import paths
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "history.db"))
+DB_FILE = str(paths.data_path("history.db"))
 
 # Valid lifecycle values for the `status` column, in the order they'd typically progress.
 QUOTE_STATUSES = ["Sent", "Won", "Lost"]

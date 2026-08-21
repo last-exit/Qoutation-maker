@@ -15,8 +15,10 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-BACKUP_DIR = ROOT / "backups"
+import paths
+
+ROOT = paths.data_root()
+BACKUP_DIR = paths.data_path("backups")
 
 # How long a writer waits for a competing write before giving up. Generous because the
 # alternative the user sees is a failed save.

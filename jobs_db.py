@@ -14,13 +14,13 @@ quotation is a document sent to a client and is finished the moment it is accept
 job is a live thing that accumulates records for months afterwards. Mixing them would mean
 every history query dragging cost rows behind it.
 """
-import os
 import re
 from datetime import datetime
 
 import db
+import paths
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "jobs.db"))
+DB_FILE = str(paths.data_path("jobs.db"))
 
 # A job's lifecycle. Deliberately short — this tracks delivery, not a project plan.
 JOB_STATUSES = ["Planned", "In Progress", "Complete", "Cancelled"]

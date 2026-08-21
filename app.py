@@ -32,8 +32,12 @@ import design_parser
 import calculators
 import rate_card
 import shop_config
+# Imported by name rather than as a module: `paths` is already used as a local variable and
+# a parameter name in several methods below, and a shadowed module is a trap for whoever
+# next adds a path lookup inside one of them.
+from paths import data_path, data_root, seed_all, stage_frontend
 
-DB_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "chroma_db"))
+DB_PATH = str(data_path("chroma_db"))
 COLLECTION_NAME = "quotation_items"
 PHOTO_COLLECTION_NAME = "photo_library"
 # Where a rebuild is assembled before it replaces the live index. See index_files.
@@ -63,7 +67,7 @@ COST_MATCH_MIN = 0.80
 # exclude_folders only removes directories that are definitively not document sources.
 # It deliberately does NOT filter on filename keywords: that was tried before and silently
 # dropped 12 real pricing files, so anything skipped here is reported back to the UI.
-SYNC_CONFIG_PATH = Path(__file__).resolve().parent / "sync_config.json"
+SYNC_CONFIG_PATH = data_path("sync_config.json")
 
 _DEFAULT_SYNC_CONFIG = {
     "default_path": "G:\\My Drive\\BOOM TREE\\ALL THE QUOTATIONS",
@@ -91,10 +95,10 @@ def _resolve_default_path(path_str):
     mac_gd = home / "Google Drive" / "My Drive"
     if mac_gd.exists():
         return str(mac_gd)
-    sample_dir = Path(__file__).resolve().parent / "sample_quotes"
+    sample_dir = data_root() / "sample_quotes"
     if sample_dir.exists():
         return str(sample_dir)
-    return str(Path(__file__).resolve().parent)
+    return str(data_root())
 
 
 def _load_sync_config():
@@ -2115,11 +2119,17 @@ def _bind_estimator_dropzone(window):
 
 
 def main():
+    # Frozen builds ship their configs read-only inside the bundle and their frontend
+    # separately from the image store; both need putting in place before anything reads
+    # them. Both are no-ops when running from source.
+    seed_all()
+    entry_point = stage_frontend()
+
     api = QuotationApi()
     company_name = doc_generator.COMPANY.get("name", "Company")
     window = webview.create_window(
         f'{company_name.title()} Smart Quotation Engine',
-        'index.html',
+        entry_point,
         js_api=api,
         width=1440,
         height=900,

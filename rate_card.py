@@ -14,14 +14,20 @@ import os
 import re
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent
+import paths
+
+# Both the rate card and the labor config are edited by the operator - the rate card in
+# Excel, the labor rates from Workspace Settings - and `add_material` appends to the CSV in
+# place. They are seeded out of the bundle on first run so that installing a new version
+# never reverts an afternoon of corrected prices.
+_ROOT = paths.data_root()
 
 # The file ships as `master_rate_card.csv.csv` (a double extension from the export that
 # produced it). The spec calls it `master_rate_card.csv`. Accept either rather than
 # renaming the operator's file underneath them, preferring the clean name if it appears.
 RATE_CARD_CANDIDATES = ("master_rate_card.csv", "master_rate_card.csv.csv")
 
-LABOR_CONFIG_PATH = _ROOT / "estimator_config.json"
+LABOR_CONFIG_PATH = paths.seeded_path("estimator_config.json")
 
 # Labor is NOT in the material rate card — all 58 rows there are materials. These are the
 # fallback trade rates, in AED/hour, and they live in `estimator_config.json` so a PM can
@@ -220,7 +226,9 @@ def _resolve_card_path(explicit=None):
         return path
 
     for name in RATE_CARD_CANDIDATES:
-        candidate = _ROOT / name
+        # seeded_path() copies the shipped card into the writable data directory the first
+        # time it is asked for, and is a no-op from source or once the copy exists.
+        candidate = paths.seeded_path(name)
         if candidate.exists():
             return candidate
 

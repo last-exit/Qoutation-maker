@@ -4,6 +4,20 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
+# The Windows installer build. `build/` and `dist/` are PyInstaller's working and output
+# directories; `build-venv/` is the isolated environment build_installer.bat creates so that
+# nothing installed for development can leak into a shipped bundle. The finished installer
+# is ~2 GB and belongs in a file transfer, not in git history.
+build/
+dist/
+build-venv/
+# The WebView2 bootstrapper is redistributable but is Microsoft's to distribute, and
+# build_installer.bat downloads it on demand.
+installer/redist/
+
+# Generated from assets/red_cube_logo.png by tools/make_icon.py.
+assets/app.ico
+
 # --- Local data stores --------------------------------------------------------
 # chroma_db is a regenerable local index, not source: rebuild it any time with
 # "Sync & Build Index" in the app. It is excluded because chroma.sqlite3 grew past

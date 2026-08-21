@@ -27,12 +27,13 @@ from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
 
 import image_store
+import paths
 
 NAVY_HEX = "1F497D"  # kept as a fallback constant; live styling now reads from COMPANY below
 
 # --- Company branding config -------------------------------------------------------
 
-COMPANY_CONFIG_PATH = Path(__file__).resolve().parent / "company.json"
+COMPANY_CONFIG_PATH = paths.seeded_path("company.json")
 
 # Confirmed by the business owner: "Red Cube" is the company running this app; "Boom Tree"
 # is one of their clients (their Drive sync folder is just named after that client's
@@ -73,7 +74,7 @@ COMPANY = _load_company_config()
 
 # --- Terms / validity config ------------------------------------------------------
 
-TERMS_CONFIG_PATH = Path(__file__).resolve().parent / "terms.json"
+TERMS_CONFIG_PATH = paths.seeded_path("terms.json")
 
 _DEFAULT_TERMS = {
     "validity_days": 14,
@@ -258,7 +259,10 @@ def _load_logo_scaled(max_width=140, max_height=60):
         return None
     path_obj = Path(logo_path)
     if not path_obj.is_absolute():
-        path_obj = Path(__file__).resolve().parent / path_obj
+        # The default logo ships in the bundle; a logo the operator has pointed at instead
+        # will be in their data directory. Try the bundle first, then the data directory.
+        bundled = paths.resource_path(str(path_obj))
+        path_obj = bundled if bundled.exists() else paths.data_path(str(path_obj))
     if not path_obj.exists():
         return None
     try:

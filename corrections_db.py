@@ -10,12 +10,12 @@ setting a venue in bulk — or merely dismissing a flag — pinned that item's r
 a later price change in the source spreadsheet could never reach the app again. Only the
 named fields are re-applied now; everything else re-parses fresh on each sync.
 """
-import os
 from datetime import datetime
 
 import db
+import paths
 
-DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "corrections.db"))
+DB_FILE = str(paths.data_path("corrections.db"))
 
 # The fields a PM can pin. Anything not listed here re-parses from the source every sync.
 CORRECTABLE_FIELDS = ("rate", "unit", "venue")

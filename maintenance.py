@@ -28,8 +28,10 @@ import history_db
 import image_store
 import logging_setup
 
-ROOT = Path(__file__).resolve().parent
-CHROMA_SQLITE = ROOT / "chroma_db" / "chroma.sqlite3"
+import paths
+
+ROOT = paths.data_root()
+CHROMA_SQLITE = paths.data_path("chroma_db") / "chroma.sqlite3"
 
 DATABASES = [history_db.DB_FILE, catalog_db.DB_FILE, corrections_db.DB_FILE]
 

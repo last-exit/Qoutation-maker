@@ -16,6 +16,7 @@ drawing says. `calculators.py` owns all arithmetic.
 
 import os
 import re
+import shutil
 from pathlib import Path
 
 import fitz  # PyMuPDF
@@ -23,6 +24,7 @@ from PIL import Image as PILImage
 
 import image_tools
 import page_geometry
+import paths
 import shape_detect
 
 SUPPORTED_PDF = {".pdf"}
@@ -404,6 +406,26 @@ _ocr_checked = False
 _ocr_init_error = None
 
 
+def _staged_ocr_models():
+    """Where easyocr should look for its weights, with the bundled copies put there.
+
+    Returns None when running from source, which leaves easyocr's own default
+    (`~/.EasyOCR/model`) and its download behaviour exactly as they were.
+    """
+    if not paths.is_frozen():
+        return None
+
+    target = paths.data_path("easyocr_models")
+    target.mkdir(parents=True, exist_ok=True)
+    bundled = paths.resource_path("easyocr_models")
+    if bundled.is_dir():
+        for weight in bundled.glob("*.pth"):
+            destination = target / weight.name
+            if not destination.exists():
+                shutil.copy2(weight, destination)
+    return str(target)
+
+
 def ocr_status():
     """Reports which OCR backend is available, if any.
 
@@ -506,7 +528,18 @@ def _ocr_tokens(pil_image):
             if _ocr_reader is None and not _ocr_checked:
                 _ocr_checked = True
                 try:
-                    _ocr_reader = easyocr.Reader(["en"], gpu=False, verbose=False)
+                    _ocr_reader = easyocr.Reader(
+                        ["en"], gpu=False, verbose=False,
+                        # Frozen builds ship the detector and recognizer weights, staged
+                        # into the writable data directory by _staged_ocr_models(). Reader
+                        # mkdir()s this path unconditionally, so it must not be inside the
+                        # read-only bundle.
+                        model_storage_directory=_staged_ocr_models(),
+                        # Without this a missing weight file quietly triggers a ~98 MB
+                        # download, which on a machine with no network manifests as a long
+                        # hang followed by a page reported as blank.
+                        download_enabled=not paths.is_frozen(),
+                    )
                 except Exception as exc:
                     # Recorded rather than raised: a bad init (e.g. a corrupt model cache)
                     # would otherwise silently downgrade every remaining page in this batch

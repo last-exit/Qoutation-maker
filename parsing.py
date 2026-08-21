@@ -8,6 +8,7 @@ import datefinder
 import openpyxl
 
 import image_tools
+import paths
 
 # --- Rate parsing -----------------------------------------------------------
 
@@ -115,7 +116,7 @@ def extract_date(filename, file_mtime):
 
 # --- Venue extraction -----------------------------------------------------------
 
-VENUES_CONFIG_PATH = Path(__file__).resolve().parent / "venues.json"
+VENUES_CONFIG_PATH = paths.seeded_path("venues.json")
 
 _DEFAULT_VENUES = [
     "Kite Beach", "Knowledge Village", "Dubai Mall", "Expo City", "Expo 2020",

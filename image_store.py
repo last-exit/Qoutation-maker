@@ -21,12 +21,13 @@ import hashlib
 import io
 import os
 import re
-from pathlib import Path
 
 from PIL import Image as PILImage
 
-ROOT = Path(__file__).resolve().parent
-IMAGE_DIR = ROOT / "images"
+import paths
+
+ROOT = paths.data_root()
+IMAGE_DIR = paths.data_path("images")
 
 # Stored resolution. These are not just UI thumbnails — the same bytes are embedded into the
 # generated Word/Excel quotation, where 250px rendered at print size looked visibly soft.

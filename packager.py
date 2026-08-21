@@ -42,12 +42,19 @@ INCLUDED_ROOT_EXTENSIONS = (".py",)
 # allowlist should already exclude these, and this makes the intent unmissable.
 NEVER_PACKAGE = (
     ".db", ".db-wal", ".db-shm", ".sqlite", ".sqlite3", ".env", ".pem", ".key",
+    # Torch model weights. `models/` is packaged because the Mac zip needs the ONNX search
+    # model, but installer/fetch_models.py also drops ~98 MB of easyocr weights in there for
+    # the Windows build, and those have no business in a source distribution - a Mac install
+    # gets them from easyocr itself.
+    ".pth",
 )
 NEVER_PACKAGE_NAMES = ("credentials.json", "token.json", "invoices.db")
 NEVER_PACKAGE_DIRS = (
     "venv", ".venv", "__pycache__", ".git", ".pytest_cache", "chroma_db",
     "backups", "graphify-out", "node_modules", ".claude", ".impeccable",
     "sample_quotes", "images", "logs",
+    # Windows installer build tree and its output.
+    "build", "dist", "build-venv", "redist",
 )
 
 

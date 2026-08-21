@@ -16,8 +16,10 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-LOG_DIR = ROOT / "logs"
+import paths
+
+ROOT = paths.data_root()
+LOG_DIR = paths.data_path("logs")
 LOG_FILE = LOG_DIR / "quotation_engine.log"
 
 _configured = False

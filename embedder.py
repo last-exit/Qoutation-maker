@@ -17,15 +17,18 @@ normalization — so vectors are interchangeable and an index built under one ba
 queried under the other. `tools/export_onnx.py` produces the ONNX file and verifies parity.
 """
 import os
-from pathlib import Path
 
 import numpy as np
 
 import logging_setup
 
-ROOT = Path(__file__).resolve().parent
+import paths
+
+# The model is read-only and ships inside the bundle, so it resolves against the bundle
+# root rather than the writable data directory.
+ROOT = paths.resource_path()
 MODEL_NAME = "all-MiniLM-L6-v2"
-ONNX_DIR = ROOT / "models" / MODEL_NAME
+ONNX_DIR = paths.resource_path("models") / MODEL_NAME
 ONNX_MODEL = ONNX_DIR / "model.onnx"
 TOKENIZER_JSON = ONNX_DIR / "tokenizer.json"
 

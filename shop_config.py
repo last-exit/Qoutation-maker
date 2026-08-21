@@ -22,8 +22,13 @@ which are not.
 import json
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent
-CONFIG_PATH = _ROOT / "estimator_config.json"
+import paths
+
+# Seeded, not bundled: this file is written back to whenever a PM edits the fabrication
+# settings, so it has to live somewhere writable. paths.seeded_path() copies the shipped
+# default out of the bundle on first run and uses that copy thereafter.
+_ROOT = paths.data_root()
+CONFIG_PATH = paths.seeded_path("estimator_config.json")
 
 # The section key inside estimator_config.json. Kept separate from `labor_rates` so the
 # existing file and its loader in rate_card.py are untouched by anything here.

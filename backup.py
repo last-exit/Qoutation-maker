@@ -36,9 +36,11 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 import logging_setup
 
-ROOT = Path(__file__).resolve().parent
-KEY_FILE = ROOT / ".backup_key"
-CONFIG_FILE = ROOT / "backup_config.json"
+import paths
+
+ROOT = paths.data_root()
+KEY_FILE = paths.data_path(".backup_key")
+CONFIG_FILE = paths.data_path("backup_config.json")
 
 # What goes in. Deliberately not chroma_db: it is a derived index rebuilt from the source
 # documents by "Sync & Build Index", and including it would triple the archive for something
